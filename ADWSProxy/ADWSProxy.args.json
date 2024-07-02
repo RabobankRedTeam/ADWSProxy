@@ -1,0 +1,62 @@
+{
+  "FileVersion": 2,
+  "Id": "750e2653-08cf-4c6d-b82a-1e96fb256e63",
+  "Items": [
+    {
+      "Id": "d5ce77d0-fd22-4514-8497-ed6246a442ec",
+      "Command": "--adwsdcport 9389"
+    },
+    {
+      "Id": "d306ec98-350a-4314-acb7-461accd39423",
+      "Command": "--adwsgcport 9389"
+    },
+    {
+      "Id": "4c13d48e-6abf-4626-90da-e532e0f1f1c1",
+      "Command": "--ldapport 389"
+    },
+    {
+      "Id": "f149c078-062f-4429-bb0c-d2e736250c09",
+      "Command": "--gcport 3268"
+    },
+    {
+      "Id": "5684100b-345a-4807-a16c-598cf6fc1549",
+      "Command": "--consoleloglevel DEBUG"
+    },
+    {
+      "Id": "7ef4b711-3487-4467-a52b-ffa0afb7c88e",
+      "Command": "--logdirectory ."
+    },
+    {
+      "Id": "a07ed351-3c06-4ac9-9ce4-e1687cef7ac8",
+      "Command": "--exitondnsstarterror true"
+    },
+    {
+      "Id": "ef0010fa-8c50-41fc-b0da-04c5e6019e33",
+      "Command": "--usewindowsauth false"
+    },
+    {
+      "Id": "f0dc762e-2490-4244-9146-91da156b7106",
+      "Command": "--dnsport 53"
+    },
+    {
+      "Id": "eb845389-cea1-4fa3-96c1-03c52b1796c8",
+      "Command": "--domain XXX"
+    },
+    {
+      "Id": "b707a127-33c5-4f3c-91e8-e585f10ce05b",
+      "Command": "--username XXX"
+    },
+    {
+      "Id": "cd389b20-a824-4458-b6d9-8eedd134e593",
+      "Command": "--password XXX"
+    },
+    {
+      "Id": "872ebef8-9a73-439d-9795-3259cacd6bc9",
+      "Command": "--domaincontroller dc01"
+    },
+    {
+      "Id": "f7a74587-565f-4d03-aa6b-229e0119fc56",
+      "Command": "--globalcatalog dc01"
+    }
+  ]
+}
