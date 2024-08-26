@@ -70,3 +70,7 @@ INFO: Done in 00M 41S
 ```
 SvcUtil.exe /nologo /noconfig /t:code /n:*,ADWSProxy.ADWS net.tcp://[...]:9389/ActiveDirectoryWebServices/mex /serializer:XmlSerializer
 ```
+
+## Blog post
+
+More information about ADWS and the development of this tool can be found within the [Rabobank TechBlog](https://rabobank.jobs/en/techblog/adws-an-unconventional-path-into-active-directory-luc-kolen/).
