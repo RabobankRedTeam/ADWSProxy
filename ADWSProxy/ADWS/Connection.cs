@@ -1,9 +1,7 @@
 ﻿using ADWSProxy.ADWS.Request;
 using ADWSProxy.LDAP;
 using Flexinets.Ldap.Core;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using log4net;
 using System.Net;
 using System.Reflection;
 using System.ServiceModel;
@@ -12,15 +10,15 @@ namespace ADWSProxy.ADWS
 {
     internal class Connection
     {
-        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly ILog logger = LogManager.GetLogger(type: MethodBase.GetCurrentMethod()?.DeclaringType ?? throw new ArgumentNullException());
 
-        private NetTcpBinding _binding = null;
+        private NetTcpBinding? _binding = null;
 
-        private ResourceClient _resource = null;
+        private ResourceClient? _resource = null;
 
-        private SearchClient _search = null;
+        private SearchClient? _search = null;
 
-        public Connection(string server, int port, string instance, bool useWindowsAuth, NetworkCredential credential = null)
+        public Connection(string server, int port, string instance, bool useWindowsAuth, NetworkCredential? credential = null)
         {
             logger.Info($"Constructing new {GetType().FullName}");
 
@@ -74,7 +72,7 @@ namespace ADWSProxy.ADWS
             }
         }
 
-        private NetworkCredential Credential { get; }
+        private NetworkCredential? Credential { get; }
         private string Instance { get; }
         private int Port { get; }
 
@@ -86,7 +84,7 @@ namespace ADWSProxy.ADWS
                 {
                     logger.Debug($"Constructing new {typeof(ResourceClient).FullName}");
 
-                    UriBuilder uriBuilder = new UriBuilder
+                    UriBuilder uriBuilder = new()
                     {
                         Scheme = "net.tcp",
                         Host = Server,
@@ -126,7 +124,7 @@ namespace ADWSProxy.ADWS
                 {
                     logger.Debug($"Constructing new {typeof(SearchClient).FullName}");
 
-                    UriBuilder uriBuilder = new UriBuilder
+                    UriBuilder uriBuilder = new()
                     {
                         Scheme = "net.tcp",
                         Host = Server,
@@ -168,7 +166,7 @@ namespace ADWSProxy.ADWS
             var messageBuffer = new GetRequest(Instance).CreateBufferedCopy();
             messageBuffer.WriteMessageToDebug(logger);
 
-            var rootDSEResponse = ResourceClient.Get(messageBuffer.CreateMessage());
+            var rootDSEResponse = ResourceClient.GetAsync(messageBuffer.CreateMessage()).Result;
             var rootDSEResponseBuffer = rootDSEResponse.CreateBufferedCopy();
             rootDSEResponseBuffer.WriteMessageToDebug(logger);
 
@@ -230,7 +228,7 @@ namespace ADWSProxy.ADWS
                 fields.Add("distinguishedname");
             }
 
-            string enumerateContext = null;
+            string? enumerateContext = null;
             DateTime? enumerateContextExpires = null;
             int pageNumber = 0;
             try
@@ -238,7 +236,7 @@ namespace ADWSProxy.ADWS
                 var enumerateRequest = new EnumerateRequest(Instance, filter, dn, scope, fields).CreateBufferedCopy();
                 enumerateRequest.WriteMessageToDebug(logger);
 
-                var enumerateResponse = SearchClient.Enumerate(enumerateRequest.CreateMessage());
+                var enumerateResponse = SearchClient.EnumerateAsync(enumerateRequest.CreateMessage()).Result;
                 var enumerateResponseBuffer = enumerateResponse.CreateBufferedCopy();
                 enumerateResponseBuffer.WriteMessageToDebug(logger);
 
@@ -259,10 +257,10 @@ namespace ADWSProxy.ADWS
                     {
                         logger.Info($"Renewing expiration for {enumerateContext}");
 
-                        var renewRequestBuffer = new RenewRequest(Instance, enumerateContext, DateTime.Now.AddMinutes(25)).CreateBufferedCopy();
+                        var renewRequestBuffer = new RenewRequest(Instance, enumerateContext!, DateTime.Now.AddMinutes(25)).CreateBufferedCopy();
                         renewRequestBuffer.WriteMessageToDebug(logger);
 
-                        var renewResponse = SearchClient.Renew(renewRequestBuffer.CreateMessage());
+                        var renewResponse = SearchClient.RenewAsync(renewRequestBuffer.CreateMessage()).Result;
                         var renewResponseBuffer = renewResponse.CreateBufferedCopy();
                         renewResponseBuffer.WriteMessageToDebug(logger);
 
@@ -272,18 +270,18 @@ namespace ADWSProxy.ADWS
                         }
                         var parsedRenewResponse = new RenewResponse(renewResponseBuffer.CreateMessage());
 
-                        string newEnumerateContext = parsedRenewResponse.EnumerateContext;
+                        string newEnumerateContext = parsedRenewResponse.EnumerateContext!;
                         DateTime newEnumerateContextExpires = parsedRenewResponse.Expiration;
 
-                        logger.Debug($"Completed Search.Renew, old context: {enumerateContext} would expire at {enumerateContextExpires?.ToShortDateString()} and new context: {newEnumerateContext} which expires at {newEnumerateContextExpires.ToShortDateString()}");
+                        logger.Debug($"Completed Search.Renew, old context: {enumerateContext} would expire at {enumerateContextExpires?.ToShortDateString()} and new context: {newEnumerateContext} which expires at {newEnumerateContextExpires:d}");
 
                         enumerateContext = newEnumerateContext;
                         enumerateContextExpires = newEnumerateContextExpires;
                     }
-                    var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext).CreateBufferedCopy();
+                    var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext!).CreateBufferedCopy();
                     pullRequest.WriteMessageToDebug(logger);
 
-                    var pullResponse = SearchClient.Pull(pullRequest.CreateMessage());
+                    var pullResponse = SearchClient.PullAsync(pullRequest.CreateMessage()).Result;
                     var pullResponseBuffer = pullResponse.CreateBufferedCopy();
                     pullResponseBuffer.WriteMessageToDebug(logger);
 
@@ -312,7 +310,7 @@ namespace ADWSProxy.ADWS
                     logger.Info($"Releasing enumerateContext: {enumerateContext}");
                     var releaseRequest = new ReleaseRequest(Instance, enumerateContext).CreateBufferedCopy();
                     releaseRequest.WriteMessageToDebug(logger);
-                    var releaseResponse = SearchClient.Release(releaseRequest.CreateMessage());
+                    var releaseResponse = SearchClient.ReleaseAsync(releaseRequest.CreateMessage()).Result;
                     var releaseResponseBuffer = releaseResponse.CreateBufferedCopy();
                     releaseResponseBuffer.WriteMessageToDebug(logger);
                     if (releaseResponse.IsFault)

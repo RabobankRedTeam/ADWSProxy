@@ -1,12 +1,47 @@
 ﻿using Flexinets.Ldap.Core;
-using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
+using System.Text;
 
 namespace ADWSProxy.LDAP
 {
     internal static class Helpers
     {
+        public static string ConvertByteSidToStringSid(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length < 8)
+                return string.Empty;
+
+            // 1. Get Revision (Byte 0)
+            byte revision = bytes[0];
+
+            // 2. Get Sub-Authority Count (Byte 1)
+            int count = bytes[1];
+
+            // 3. Get Identifier Authority (Bytes 2 through 7)
+            // This is a big-endian 48-bit integer
+            long authority = 0;
+            for (int i = 2; i <= 7; i++)
+            {
+                authority = (authority << 8) | bytes[i];
+            }
+
+            // 4. Build the prefix
+            StringBuilder sb = new();
+            sb.Append($"S-{revision}-{authority}");
+
+            // 5. Get Sub-Authorities (4 bytes each, little-endian)
+            for (int i = 0; i < count; i++)
+            {
+                int offset = 8 + (i * 4);
+                if (offset + 4 > bytes.Length) break;
+
+                uint subAuthority = BitConverter.ToUInt32(bytes, offset);
+                sb.Append($"-{subAuthority}");
+            }
+
+            return sb.ToString();
+        }
+
         public static LdapAttribute AddItemsToResponse(this LdapAttribute response, List<DataHolder> items)
         {
             var list = new LdapAttribute(UniversalDataType.Sequence);
@@ -31,9 +66,9 @@ namespace ADWSProxy.LDAP
             return response;
         }
 
-        public static byte[] GetRawValue(this LdapAttribute ldapAttribute)
+        public static byte[]? GetRawValue(this LdapAttribute ldapAttribute)
         {
-            return (byte[])typeof(LdapAttribute).GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(ldapAttribute);
+            return typeof(LdapAttribute).GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(ldapAttribute) as byte[];
         }
 
         /// <summary>
@@ -42,8 +77,7 @@ namespace ADWSProxy.LDAP
         public static IEnumerable<byte> NTLMMatchedDN()
         {
             return
-                new List<byte>
-                    {
+                [
                         0x4e,0x54,0x4c,0x4d,0x53,0x53,0x50,0x00, // NTLMSSP\0
                         0x02,0x00,0x00,0x00, // NTLMSSP_CHALLENGE
                         // Target Name:
@@ -104,7 +138,7 @@ namespace ADWSProxy.LDAP
                         0x00,0x00, // Item Length: 0
                         // End attribute
                         0x04,0x00 // End of bind response
-                    };
+                    ];
         }
     }
 }

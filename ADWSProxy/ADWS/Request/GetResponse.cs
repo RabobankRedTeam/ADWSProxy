@@ -1,16 +1,11 @@
-﻿using System.Collections.Generic;
-using System.ServiceModel.Channels;
+﻿using System.ServiceModel.Channels;
 using System.Xml;
 
 namespace ADWSProxy.ADWS.Request
 {
-    internal class GetResponse : ADWSResponse
+    internal class GetResponse(Message response) : ADWSResponse(response)
     {
-        public GetResponse(Message response) : base(response)
-        {
-        }
-
-        public Dictionary<string, List<string>> Items { get; set; } = new Dictionary<string, List<string>> { };
+        public Dictionary<string, List<string>> Items { get; set; } = [];
 
         protected override void OnReadBodyContents(XmlDictionaryReader reader)
         {
@@ -24,14 +19,16 @@ namespace ADWSProxy.ADWS.Request
                         if (reader.NodeType == XmlNodeType.Text)
                         {
                             var nodeValue = reader.Value;
+#pragma warning disable CA1854 // Prefer the 'IDictionary.TryGetValue(TKey, out TValue)' method
                             if (Items.ContainsKey(elementName))
                             {
                                 Items[elementName].Add(nodeValue);
                             }
                             else
                             {
-                                Items.Add(elementName, new List<string>() { nodeValue });
+                                Items.Add(elementName, [nodeValue]);
                             }
+#pragma warning restore CA1854 // Prefer the 'IDictionary.TryGetValue(TKey, out TValue)' method
                         }
                         if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName != "value")
                         {

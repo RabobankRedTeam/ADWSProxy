@@ -1,43 +1,31 @@
 ﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
 using System.ServiceModel;
 using System.ServiceModel.Channels;
 using System.Xml;
 
 namespace ADWSProxy.ADWS.Request
 {
-    internal class ADWSException : FaultException
+    internal class ADWSException(MessageFault fault, FaultReason reason, FaultCode code, string action, string? ErrorType, Dictionary<string, string> Errors) : FaultException(reason, code, action)
     {
-        public ADWSException(MessageFault fault, FaultReason reason, FaultCode code, string ErrorType, Dictionary<string, string> Errors) : base(reason, code)
-        {
-            Fault = fault ?? throw new ArgumentNullException(nameof(fault));
-            this.ErrorType = ErrorType;
-            this.Errors = Errors;
-        }
-
-        public MessageFault Fault { get; private set; }
+        public MessageFault Fault { get; private set; } = fault ?? throw new ArgumentNullException(nameof(fault));
 
         public override string Message => $"ADWS Encountered '{ErrorType}', {JsonConvert.SerializeObject(Errors)}";
 
-        public string ErrorType { get; private set; } = null;
-        public Dictionary<string, string> Errors { get; private set; } = new Dictionary<string, string>();
+        public string? ErrorType { get; private set; } = ErrorType;
+        public Dictionary<string, string> Errors { get; private set; } = Errors;
 
         public static ADWSException FromMessageBuffer(MessageBuffer messageBuffer)
         {
-            if (messageBuffer is null)
-            {
-                throw new ArgumentNullException(nameof(messageBuffer));
-            }
+            ArgumentNullException.ThrowIfNull(messageBuffer);
 
             var message = messageBuffer.CreateMessage();
             if (!message.IsFault)
             {
-                return null;
+                throw new Exception("Tried to throw an ADWSException for a non faulted message");
             }
 
             var fault = MessageFault.CreateFault(message, Helpers.BufferSize);
-            string errorType = null;
+            string? errorType = null;
             var errors = new Dictionary<string, string>();
             if (fault.HasDetail)
             {
@@ -69,7 +57,7 @@ namespace ADWSProxy.ADWS.Request
                 }
             }
 
-            return new ADWSException(fault, fault.Reason, fault.Code, errorType, errors);
+            return new ADWSException(fault, fault.Reason, fault.Code, message.Headers.Action, errorType, errors);
         }
     }
 }

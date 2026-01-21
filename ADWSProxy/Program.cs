@@ -1,12 +1,10 @@
 ﻿using ADWSProxy.LDAP;
-using CommandLine.Text;
 using CommandLine;
+using CommandLine.Text;
 using DNS.Server;
 using log4net;
 using Newtonsoft.Json;
-using System;
 using System.Globalization;
-using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 
@@ -14,14 +12,14 @@ namespace ADWSProxy
 {
     internal class Program
     {
-        private static readonly ILog logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly ILog logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod()?.DeclaringType!);
 
         // Handles IPv4 and IPv6 notation.
         private static IPEndPoint CreateIPEndPoint(string endPoint)
         {
             string[] ep = endPoint.Split(':');
             if (ep.Length < 2) throw new FormatException("Invalid endpoint format");
-            IPAddress ip;
+            IPAddress? ip;
             if (ep.Length > 2)
             {
                 if (!IPAddress.TryParse(string.Join(":", ep, 0, ep.Length - 1), out ip))
@@ -36,7 +34,7 @@ namespace ADWSProxy
                     throw new FormatException("Invalid ip-adress");
                 }
             }
-            if (!int.TryParse(ep[ep.Length - 1], NumberStyles.None, NumberFormatInfo.CurrentInfo, out int port))
+            if (!int.TryParse(ep[^1], NumberStyles.None, NumberFormatInfo.CurrentInfo, out int port))
             {
                 throw new FormatException("Invalid port");
             }
@@ -53,7 +51,7 @@ namespace ADWSProxy
                 var helpText = HelpText.AutoBuild(parsedArgs, h =>
                 {
                     h.Copyright = $"Created by Rabobank Red Team";
-                    h.AutoVersion = true ;
+                    h.AutoVersion = true;
                     return h;
                 });
                 Console.WriteLine(helpText);
@@ -63,31 +61,43 @@ namespace ADWSProxy
                 return;
             }
 
-            LoggerConfig.ConfigureLogger(parsedArgs.Value.ConsoleLogLevel, parsedArgs.Value.LogDirectory);
+            LoggerConfig.ConfigureLogger(parsedArgs.Value.ConsoleLogLevel!, parsedArgs.Value.LogDirectory!);
 
             logger.Info("Starting ADWSproxy.");
 
             var exitCode = 0;
-            Listener LDAPListener = null;
-            Listener GCListener = null;
+            Listener? LDAPListener = null;
+            Listener? GCListener = null;
 
             var credentials = parsedArgs.Value.GetNetworkCredential();
 
             try
             {
                 var LDAPEndpoint = $"0.0.0.0:{parsedArgs.Value.LDAPPort}";
-                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), parsedArgs.Value.DomainController, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
+                var dc = parsedArgs.Value.DomainController;
+                ArgumentNullException.ThrowIfNullOrWhiteSpace(dc);
+                if (!dc.Contains('.'))
+                {
+                    dc = dc + "." + parsedArgs.Value.Domain;
+                }
+                
+                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance!, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
                 LDAPListener.Start();
                 logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {parsedArgs.Value.LDAPInstance}");
 
-                if (string.IsNullOrWhiteSpace(parsedArgs.Value.GlobalCatalog))
+                var gc = parsedArgs.Value.GlobalCatalog;
+                if (string.IsNullOrWhiteSpace(gc))
                 {
                     logger.Info($"No Global Catalog server defined so no Global Catalog listener has been started");
                 }
                 else
                 {
+                    if (!gc.Contains('.'))
+                    {
+                        gc = gc + "." + parsedArgs.Value.Domain;
+                    }
                     var GCEndpoint = $"0.0.0.0:{parsedArgs.Value.GCPort}";
-                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), parsedArgs.Value.GlobalCatalog, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
+                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance!, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
                     GCListener.Start();
                     logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {parsedArgs.Value.GCInstance}");
                 }
@@ -166,7 +176,7 @@ namespace ADWSProxy
             }
             else
             {
-                DnsServer dnsServer = new DnsServer(new DNS.Resolver(ldapPort, gcPort), dnsEndpoint);
+                DnsServer dnsServer = new(new DNS.Resolver(ldapPort, gcPort), dnsEndpoint);
                 dnsServer.Listen();
                 return true;
             }

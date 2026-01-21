@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace ADWSProxy.ADWS
+﻿namespace ADWSProxy.ADWS
 {
     /// <summary>
     /// Flags that control the behavior of the user account.

@@ -1,17 +1,15 @@
 ﻿using DNS.Client.RequestResolver;
 using DNS.Protocol;
 using DNS.Protocol.ResourceRecords;
-using System;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Reflection;
 
 namespace ADWSProxy.DNS
 {
     internal class Resolver : IRequestResolver
     {
-        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(type: MethodBase.GetCurrentMethod()!.DeclaringType!);
 
         public Resolver(ushort ldapPort, ushort gcport)
         {
@@ -35,7 +33,9 @@ namespace ADWSProxy.DNS
         {
             logger.Info("Resolving new DNS request");
 
+#pragma warning disable CA1859 // Use concrete types when possible for improved performance
             IResponse response = Response.FromRequest(request);
+#pragma warning restore CA1859 // Use concrete types when possible for improved performance
 
             foreach (Question question in response.Questions)
             {

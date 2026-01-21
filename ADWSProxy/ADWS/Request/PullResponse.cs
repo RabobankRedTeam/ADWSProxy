@@ -1,22 +1,16 @@
 ﻿using ADWSProxy.LDAP;
 using Flexinets.Ldap.Core;
-using System;
-using System.Collections.Generic;
 using System.ServiceModel.Channels;
 using System.Xml;
 
 namespace ADWSProxy.ADWS.Request
 {
-    internal class PullResponse : ADWSResponse
+    internal class PullResponse(Message response) : ADWSResponse(response)
     {
-        public PullResponse(Message response) : base(response)
-        {
-        }
-
         public bool EndOfSequence { get; private set; } = false;
-        public string EnumerateContext { get; private set; }
+        public string? EnumerateContext { get; private set; }
 
-        public Dictionary<string, List<DataHolder>> Items { get; set; } = new Dictionary<string, List<DataHolder>>();
+        public Dictionary<string, List<DataHolder>> Items { get; set; } = [];
 
         protected override void OnReadBodyContents(XmlDictionaryReader reader)
         {
@@ -37,7 +31,7 @@ namespace ADWSProxy.ADWS.Request
                 reader.Read();
 
                 var item = new List<DataHolder>();
-                string dn = null;
+                string? dn = null;
                 do
                 {
                     if (reader.NodeType == XmlNodeType.Element)
@@ -56,7 +50,7 @@ namespace ADWSProxy.ADWS.Request
                                 reader.Read();
                                 if (reader.NodeType == XmlNodeType.Element)
                                 {
-                                    string type = reader.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance");
+                                    string? type = reader.GetAttribute("type", "http://www.w3.org/2001/XMLSchema-instance");
 
                                     reader.Read();
                                     string contentString = reader.ReadContentAsString();
@@ -85,7 +79,7 @@ namespace ADWSProxy.ADWS.Request
                         {
                             Items.Add(dn, item);
                         }
-                        item = new List<DataHolder>();
+                        item = [];
                         dn = null;
                         reader.Read();
                         if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName.Equals("items", StringComparison.InvariantCultureIgnoreCase))

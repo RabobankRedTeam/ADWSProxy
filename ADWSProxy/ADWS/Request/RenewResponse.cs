@@ -1,16 +1,11 @@
-﻿using System;
-using System.ServiceModel.Channels;
+﻿using System.ServiceModel.Channels;
 using System.Xml;
 
 namespace ADWSProxy.ADWS.Request
 {
-    internal class RenewResponse : ADWSResponse
+    internal class RenewResponse(Message response) : ADWSResponse(response)
     {
-        public RenewResponse(Message response) : base(response)
-        {
-        }
-
-        public string EnumerateContext { get; set; }
+        public string? EnumerateContext { get; set; }
         public DateTime Expiration { get; set; }
 
         protected override void OnReadBodyContents(XmlDictionaryReader reader)

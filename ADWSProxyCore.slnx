@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ADWSProxy/ADWSProxy.csproj" />
+  <Project Path="TestClient/TestClient.csproj" Id="6914df89-f0a6-415d-8d03-848622b8ef97" />
+</Solution>
