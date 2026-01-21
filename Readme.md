@@ -46,7 +46,7 @@ Windows Example:
 .\ADWSProxy.exe --domaincontroller dc01 --domain [...]
 
 # Using explicit credentials
-.\ADWSProxy.exe --usewindowsauth true -u "luc" -p "password" --domaincontroller dc01 --domain [...]
+.\ADWSProxy.exe --usewindowsauth false -u "luc" -p "password" --domaincontroller dc01 --domain [...]
 ```
 
 ### Linux/Docker Example:
