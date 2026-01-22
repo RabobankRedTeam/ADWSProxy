@@ -202,7 +202,7 @@ namespace ADWSProxy.LDAP
             // These are removed from the request as this would cause an exception when sent to the ADWS endpoint.
             // Root cause of this issue has not been investigated as manually blocking these properties works for now.
             if (dn!.StartsWith("cn=aggregate,cn=schema,cn=configuration,dc=", StringComparison.OrdinalIgnoreCase)
-                && filter.ToLower().Equals("(objectclass=subschema)")
+                && filter.Equals("(objectclass=subschema)", StringComparison.OrdinalIgnoreCase)
                 && scope.Equals("base"))
             {
                 blockedProperties.AddRange(["createtimestamp", "ldapsyntaxes", "matchingrules", "matchingruleuse", "ditstructurerules", "nameforms"]);
