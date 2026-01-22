@@ -80,7 +80,7 @@ namespace ADWSProxy
                 {
                     dc = dc + "." + parsedArgs.Value.Domain;
                 }
-                
+
                 LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance!, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
                 LDAPListener.Start();
                 logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {parsedArgs.Value.LDAPInstance}");

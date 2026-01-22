@@ -37,7 +37,7 @@ namespace ADWSProxy.ADWS.Request
                     if (reader.NodeType == XmlNodeType.Element)
                     {
                         var elementName = reader.LocalName;
-                        if (elementName.Equals("distinguishedName", StringComparison.InvariantCultureIgnoreCase))
+                        if (elementName.Equals("distinguishedName", StringComparison.OrdinalIgnoreCase))
                         {
                             reader.Read();
                             dn = reader.ReadElementContentAsString();
@@ -82,7 +82,7 @@ namespace ADWSProxy.ADWS.Request
                         item = [];
                         dn = null;
                         reader.Read();
-                        if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName.Equals("items", StringComparison.InvariantCultureIgnoreCase))
+                        if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName.Equals("items", StringComparison.OrdinalIgnoreCase))
                         {
                             reader.Read();
                             if (reader.IsStartElement("EndOfSequence", "http://schemas.xmlsoap.org/ws/2004/09/enumeration"))

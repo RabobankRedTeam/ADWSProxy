@@ -125,7 +125,7 @@ namespace ADWSProxy.LDAP
                     }
                     logger.Info("Packet handling done!");
                 }
-                catch (System.ArgumentException ex)
+                catch (ArgumentException ex)
                 {
                     logger.Error("ArgumentException. Continuing.", ex);
                 }
@@ -165,7 +165,7 @@ namespace ADWSProxy.LDAP
             logger.Info($"Request scopeIdentifier = {scopeValue}, Scope: {scope}");
 
             // TODO: Check if there is a more elegant solution to this.
-            if (string.IsNullOrEmpty(dn) && filter.ToLower().Equals("(objectclass=*)") && scope == "base")
+            if (string.IsNullOrEmpty(dn) && filter.Equals("(objectclass=*)", StringComparison.OrdinalIgnoreCase) && scope == "base")
             {
                 try
                 {
@@ -201,7 +201,7 @@ namespace ADWSProxy.LDAP
             // Bloodhound.py requested the a number of non existing properties during testing.
             // These are removed from the request as this would cause an exception when sent to the ADWS endpoint.
             // Root cause of this issue has not been investigated as manually blocking these properties works for now.
-            if (dn!.StartsWith("cn=aggregate,cn=schema,cn=configuration,dc=", StringComparison.CurrentCultureIgnoreCase)
+            if (dn!.StartsWith("cn=aggregate,cn=schema,cn=configuration,dc=", StringComparison.OrdinalIgnoreCase)
                 && filter.ToLower().Equals("(objectclass=subschema)")
                 && scope.Equals("base"))
             {
@@ -283,7 +283,7 @@ namespace ADWSProxy.LDAP
 
                 case LdapFilterChoice.equalityMatch:
                     var name = filterAttribute.ChildAttributes[0].GetValue<string>();
-                    if (!string.IsNullOrEmpty(name) && name.Equals("objectsid", StringComparison.InvariantCultureIgnoreCase))
+                    if (!string.IsNullOrEmpty(name) && name.Equals("objectsid", StringComparison.OrdinalIgnoreCase))
                     {
                         var bytesValue = filterAttribute.ChildAttributes[1].GetRawValue()!;
                         string sid;

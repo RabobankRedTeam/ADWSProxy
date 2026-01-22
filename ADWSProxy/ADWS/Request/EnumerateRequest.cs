@@ -34,15 +34,15 @@ namespace ADWSProxy.ADWS.Request
                 writer.WriteAttributeString("Dialect", "http://schemas.microsoft.com/2008/1/ActiveDirectory/Dialect/XPath-Level-1");
                 foreach (var attr in Attributes)
                 {
-                    if (attr.Equals("distinguishedname", StringComparison.InvariantCultureIgnoreCase))
+                    if (attr.Equals("distinguishedname", StringComparison.OrdinalIgnoreCase))
                     {
                         writer.WriteElementString("ad", "SelectionProperty", null, "ad:distinguishedName");
                     }
-                    else if (attr.Equals("*", StringComparison.InvariantCultureIgnoreCase))
+                    else if (attr.Equals("*", StringComparison.OrdinalIgnoreCase))
                     {
                         writer.WriteElementString("ad", "SelectionProperty", null, "ad:all");
                     }
-                    else if (attr.Equals("**", StringComparison.InvariantCultureIgnoreCase))
+                    else if (attr.Equals("**", StringComparison.OrdinalIgnoreCase))
                     {
                         writer.WriteElementString("ad", "SelectionProperty", null, "addata:all");
                     }

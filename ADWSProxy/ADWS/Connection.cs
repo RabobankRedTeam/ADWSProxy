@@ -180,7 +180,7 @@ namespace ADWSProxy.ADWS
             foreach (var item in parsedResponse.Items)
             {
                 // These fields return the guid 11111111-1111-1111-1111-111111111111 which is not present in a direct LDAP request to get the RootDSE
-                if (item.Key.Equals("container-hierarchy-parent", StringComparison.InvariantCultureIgnoreCase) || item.Key.Equals("objectReferenceProperty", StringComparison.InvariantCultureIgnoreCase))
+                if (item.Key.Equals("container-hierarchy-parent", StringComparison.OrdinalIgnoreCase) || item.Key.Equals("objectReferenceProperty", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -223,7 +223,7 @@ namespace ADWSProxy.ADWS
 
         internal void Enumerate(string dn, string filter, List<string> fields, string scope, Action<(string, List<DataHolder>)> callback)
         {
-            if (!fields.Any(field => field.Equals("distinguishedname", StringComparison.CurrentCultureIgnoreCase)))
+            if (!fields.Any(field => field.Equals("distinguishedname", StringComparison.OrdinalIgnoreCase)))
             {
                 fields.Add("distinguishedname");
             }
