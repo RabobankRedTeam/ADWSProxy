@@ -1,35 +1,64 @@
 ﻿using Flexinets.Ldap.Core;
+using log4net;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
 using System.Text;
 
 namespace ADWSProxy.LDAP
 {
     internal static class Helpers
     {
+        private static readonly ILog logger = LogManager.GetLogger(MethodBase.GetCurrentMethod()?.DeclaringType!);
+
         public static string ConvertByteSidToStringSid(byte[] bytes)
         {
             if (bytes == null || bytes.Length < 8)
                 return string.Empty;
 
-            // 1. Get Revision (Byte 0)
-            byte revision = bytes[0];
+            // 1. Generate the SID string using the cross-platform manual parser
+            string manualSid = ParseSidManually(bytes);
 
-            // 2. Get Sub-Authority Count (Byte 1)
+            // 2. Perform Windows-specific validation if requested
+            if (logger.IsDebugEnabled && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                try
+                {
+                    var nativeSid = new SecurityIdentifier(bytes, 0).ToString();
+
+                    if (!string.Equals(manualSid, nativeSid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Generate Base64 for easier external debugging
+                        string base64 = Convert.ToBase64String(bytes);
+
+                        logger.Warn($"SID Mismatch! Manual: {manualSid} | Native: {nativeSid} | Raw Base64: {base64}");
+
+                        return nativeSid;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    string base64 = Convert.ToBase64String(bytes);
+                    logger.Debug($"Native SID validation failed. Manual: {manualSid} | Base64: {base64}", ex);
+                }
+            }
+
+            return manualSid;
+        }
+        private static string ParseSidManually(byte[] bytes)
+        {
+            byte revision = bytes[0];
             int count = bytes[1];
 
-            // 3. Get Identifier Authority (Bytes 2 through 7)
-            // This is a big-endian 48-bit integer
             long authority = 0;
             for (int i = 2; i <= 7; i++)
             {
                 authority = (authority << 8) | bytes[i];
             }
 
-            // 4. Build the prefix
             StringBuilder sb = new();
             sb.Append($"S-{revision}-{authority}");
 
-            // 5. Get Sub-Authorities (4 bytes each, little-endian)
             for (int i = 0; i < count; i++)
             {
                 int offset = 8 + (i * 4);
