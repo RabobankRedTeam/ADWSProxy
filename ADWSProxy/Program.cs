@@ -76,12 +76,12 @@ namespace ADWSProxy
                 var LDAPEndpoint = $"0.0.0.0:{parsedArgs.Value.LDAPPort}";
                 var dc = parsedArgs.Value.DomainController;
                 ArgumentNullException.ThrowIfNullOrWhiteSpace(dc);
-                if (!dc.Contains('.'))
+                if (!dc.Contains('.') && !string.IsNullOrWhiteSpace(parsedArgs.Value.Domain))
                 {
-                    dc = dc + "." + parsedArgs.Value.Domain;
+                    dc = $"{dc}.{parsedArgs.Value.Domain}";
                 }
 
-                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance!, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
+                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance!, parsedArgs.Value.Mode, credentials);
                 LDAPListener.Start();
                 logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {parsedArgs.Value.LDAPInstance}");
 
@@ -97,7 +97,7 @@ namespace ADWSProxy
                         gc = gc + "." + parsedArgs.Value.Domain;
                     }
                     var GCEndpoint = $"0.0.0.0:{parsedArgs.Value.GCPort}";
-                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance!, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
+                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance!, parsedArgs.Value.Mode, credentials);
                     GCListener.Start();
                     logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {parsedArgs.Value.GCInstance}");
                 }

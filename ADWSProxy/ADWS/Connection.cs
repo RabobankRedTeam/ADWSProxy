@@ -5,6 +5,7 @@ using log4net;
 using System.Net;
 using System.Reflection;
 using System.ServiceModel;
+using System.ServiceModel.Channels;
 
 namespace ADWSProxy.ADWS
 {
@@ -18,24 +19,26 @@ namespace ADWSProxy.ADWS
 
         private SearchClient? _search = null;
 
-        public Connection(string server, int port, string instance, bool useWindowsAuth, NetworkCredential? credential = null)
+        public Connection(string server, int port, string instance, AdwsEndpoint mode, NetworkCredential? credential = null)
         {
             logger.Info($"Constructing new {GetType().FullName}");
+
+            ServicePointManager.ServerCertificateValidationCallback = (s, c, ch, e) => true;
 
             Server = server;
             Instance = instance;
             Port = port;
             Credential = credential;
-            UseWindowsAuth = useWindowsAuth;
+            Mode = mode;
         }
 
-        public bool UseWindowsAuth { get; }
+        public AdwsEndpoint Mode { get; }
 
         private string Auth
         {
             get
             {
-                return UseWindowsAuth ? "Windows" : "UserName";
+                return Mode == AdwsEndpoint.Windows ? "Windows" : "UserName";
             }
         }
 
@@ -60,9 +63,19 @@ namespace ADWSProxy.ADWS
                     _binding.ReaderQuotas.MaxStringContentLength = 32768;
                     _binding.ReaderQuotas.MaxArrayLength = 16384;
 
-                    _binding.Security.Transport.ProtectionLevel = System.Net.Security.ProtectionLevel.EncryptAndSign;
-                    _binding.Security.Message.ClientCredentialType = UseWindowsAuth ? MessageCredentialType.Windows : MessageCredentialType.UserName;
-                    _binding.Security.Mode = UseWindowsAuth ? SecurityMode.Transport : SecurityMode.TransportWithMessageCredential;
+                    if (Mode == AdwsEndpoint.Windows)
+                    {
+                        _binding.Security.Mode = SecurityMode.Transport;
+                        _binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.Windows;
+                        _binding.Security.Transport.ProtectionLevel = System.Net.Security.ProtectionLevel.EncryptAndSign;
+                        _binding.Security.Message.ClientCredentialType = MessageCredentialType.None;
+                    }
+                    else
+                    {
+                        _binding.Security.Mode = SecurityMode.TransportWithMessageCredential;
+                        _binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.None;
+                        _binding.Security.Message.ClientCredentialType = MessageCredentialType.UserName;
+                    }
 
                     logger.Debug($"Using EncryptAndSing on Transport {_binding.Security.Transport.ProtectionLevel == System.Net.Security.ProtectionLevel.EncryptAndSign}");
 
@@ -93,14 +106,18 @@ namespace ADWSProxy.ADWS
                         Path = $"ActiveDirectoryWebServices/{Auth}/Resource"
                     };
 
-                    _resource = new ResourceClient(Binding, new EndpointAddress(uriBuilder.Uri));
+                    var endpoint = new EndpointAddress(uriBuilder.Uri, null, Array.Empty<AddressHeader>());
+
+                    _resource = new ResourceClient(Binding, endpoint);
                     if (Credential != null)
                     {
-                        if (UseWindowsAuth)
+                        if (Mode == AdwsEndpoint.Windows)
                         {
                             _resource.ClientCredentials.Windows.ClientCredential.UserName = Credential.UserName;
                             _resource.ClientCredentials.Windows.ClientCredential.Password = Credential.Password;
                             _resource.ClientCredentials.Windows.ClientCredential.Domain = Credential.Domain;
+                            _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+
                         }
                         else
                         {
@@ -133,11 +150,13 @@ namespace ADWSProxy.ADWS
                         Path = $"ActiveDirectoryWebServices/{Auth}/Enumeration"
                     };
 
-                    _search = new SearchClient(Binding, new EndpointAddress(uriBuilder.Uri));
+                    var endpoint = new EndpointAddress(uriBuilder.Uri, null, Array.Empty<AddressHeader>());
+
+                    _search = new SearchClient(Binding, endpoint);
 
                     if (Credential != null)
                     {
-                        if (UseWindowsAuth)
+                        if (Mode == AdwsEndpoint.Windows)
                         {
                             _search.ClientCredentials.Windows.ClientCredential.UserName = Credential.UserName;
                             _search.ClientCredentials.Windows.ClientCredential.Password = Credential.Password;

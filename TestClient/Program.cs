@@ -57,6 +57,8 @@ namespace TestClient
             RunQuery(targetServer, ldapPort, searchRequest, credentials);
             Console.WriteLine("Running LDAP Query against GC Proxy...");
             RunQuery(targetServer, gcPort, searchRequest, credentials);
+            Console.WriteLine("Press Enter to exit...");
+            Console.ReadLine();
         }
     }
 }

@@ -29,9 +29,9 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
   --ldapinstance           (Default: ldap:389) The LDAP instance within ADWS
   --ldapport               (Default: 389) The LDAP port to proxy from
   --logdirectory           (Default: .) The log directory for runtime logs
+  -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username.
   -p, --password           The password to authenticate to ADWS
   -u, --username           The username to authenticate to ADWS
-  --usewindowsauth         (Default: true) Use Windows Session (Kerberos/NTLM) or explicit credentials
   --help                   Display this help screen.
   --version                Display version information.
   ```
@@ -40,19 +40,34 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
 
 The proxy requires valid credentials if executed outside of a domain-joined Windows session (e.g., when running on Linux or in Docker).
 
-Windows Example:
-```text
-# Using current session credentials
-.\ADWSProxy.exe --domaincontroller dc01 --domain [...]
+#### Server 2025
 
-# Using explicit credentials
-.\ADWSProxy.exe --usewindowsauth false -u "luc" -p "password" --domaincontroller dc01 --domain [...]
+Windows Server 2025 has removed the `/UserName` endpoints so only `--mode Windows` is supported.
+
+This mode can be used without explicitly noting credentials by using the current Windows session:
+
+```powershell
+.\ADWSProxy.exe --domaincontroller "dc01"
+```
+
+It's also possible to explicitly set credentials to use, for instance when running from a non domain joined machine and/or a docker container.
+
+```powershell
+.\ADWSProxy.exe -u "user" -p "password" --domain "[...]" --domaincontroller "dc01"
+```
+
+#### Older versions
+
+Older versions of Windows do support the `/UserName` endpoints so we can also use those to obtain data via ADWS:
+
+```powershell
+.\ADWSProxy.exe -m "Username" -u "user" -p "password" --domain "[...]" --domaincontroller "dc01"
 ```
 
 ### Linux/Docker Example:
 ```bash
 docker run -p 389:389 -p 9389:9389 adwsproxy:latest \
-  --usewindowsauth false \
+  --mode Windows \
   --username "luc" \
   --password "password" \
   --domaincontroller dc01 \
@@ -77,6 +92,16 @@ dotnet --fx-version 8.0.23 "C:\Users\luc\.dotnet\tools\.store\dotnet-svcutil\8.0
   --serializer XmlSerializer \
   --targetFramework net8.0
 ```
+
+### Mandatory RPC Sealing and Signing
+
+Server 2025 enforces strict integrity requirements. All NTLM/Kerberos tokens must negotiate 128-bit encryption and message signing (Seal & Sign).
+
+>Technical Note: This tool automatically configures ProtectionLevel.EncryptAndSign to meet this requirement. If you encounter 0x80090302 (Invalid Token), ensure your client machine's clock is synchronized with the Domain Controller.
+
+### NTLMv1 Retirement
+
+Server 2025 has effectively retired NTLMv1. If running this tool from a Linux/Docker environment, ensure you have the `gss-ntlmssp` package installed to support modern NTLMv2/Negotiate handshakes.
 
 ## Integration Testing (Bloodhound)
 

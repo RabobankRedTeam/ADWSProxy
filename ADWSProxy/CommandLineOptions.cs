@@ -3,6 +3,7 @@ using System.Net;
 
 namespace ADWSProxy
 {
+
     internal class CommandLineOptions
     {
         [Option("adwsdcport", Required = false, Default = 9389, HelpText = "The ADWS port to proxy to on the domain controller")]
@@ -50,8 +51,10 @@ namespace ADWSProxy
         [Option('u', "username", Required = false, Default = null, HelpText = "The username to authenticate to ADWS")]
         public string? Username { get; set; }
 
-        [Option("usewindowsauth", Required = false, Default = true, HelpText = "Use Windows Authentication (default) or Username/Password with TLS")]
-        public bool? UseWindowsAuth { get; set; }
+        [Option('m', "mode", Required = false, Default = AdwsEndpoint.Windows, HelpText = "ADWS Endpoint Mode: 'Windows' (default, NTLM/Kerberos) or 'Username' (Legacy TLS).")]
+        public AdwsEndpoint Mode { get; set; }
+
+
 
         public NetworkCredential? GetNetworkCredential()
         {

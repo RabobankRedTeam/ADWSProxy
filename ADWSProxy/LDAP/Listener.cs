@@ -10,13 +10,13 @@ namespace ADWSProxy.LDAP
     {
         private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod()!.DeclaringType!);
 
-        public Listener(IPEndPoint endpoint, string domainController, int adwsPort, string instance, bool useWindowsAuth, NetworkCredential? credential = null)
+        public Listener(IPEndPoint endpoint, string domainController, int adwsPort, string instance, AdwsEndpoint mode, NetworkCredential? credential = null)
         {
             logger.Info($"Constructing new {GetType().FullName}");
 
             TcpListener = new TcpListener(endpoint);
 
-            ADWSConnection = new Connection(domainController, adwsPort, instance, useWindowsAuth, credential);
+            ADWSConnection = new Connection(domainController, adwsPort, instance, mode, credential);
             Instance = instance;
         }
 
