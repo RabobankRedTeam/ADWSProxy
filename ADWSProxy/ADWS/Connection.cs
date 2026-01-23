@@ -11,7 +11,7 @@ namespace ADWSProxy.ADWS
 {
     internal class Connection
     {
-        private static readonly ILog logger = LogManager.GetLogger(type: MethodBase.GetCurrentMethod()?.DeclaringType ?? throw new ArgumentNullException());
+        private static readonly ILog logger = LogManager.GetLogger(type: MethodBase.GetCurrentMethod()!.DeclaringType!);
 
         private NetTcpBinding? _binding = null;
 
