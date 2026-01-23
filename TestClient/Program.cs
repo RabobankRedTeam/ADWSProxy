@@ -62,7 +62,7 @@ namespace TestClient
                 // This ensures the proxy handles binary filters in the search request
                 var entry = response.Entries[0];
                 byte[] sidBytes = (byte[])entry.Attributes["objectSid"][0];
-                string sidString = new SecurityIdentifier(sidBytes, 0).ToString();
+                string sidString = ConvertSidToReadable(sidBytes); //new SecurityIdentifier(sidBytes, 0).ToString();
                 string hexFilter = ConvertSidToHexFilter(sidBytes);
 
                 Console.WriteLine($"[+] Found Administrator: {sidString}");
@@ -92,11 +92,42 @@ namespace TestClient
             }
         }
 
+        public static string ConvertSidToReadable(byte[] bytes)
+        {
+            // Basic validation: SIDs are at least 8 bytes
+            if (bytes == null || bytes.Length < 8) return "Invalid SID";
+
+            // First byte is the revision (usually 1)
+            byte revision = bytes[0];
+
+            // Second byte is the count of sub-authorities
+            int subAuthorityCount = bytes[1];
+
+            // Next 6 bytes are the Identifier Authority (big-endian)
+            long authority = 0;
+            for (int i = 2; i <= 7; i++)
+            {
+                authority = (authority << 8) | bytes[i];
+            }
+
+            StringBuilder sb = new StringBuilder();
+            sb.Append($"S-{revision}-{authority}");
+
+            // The rest are 4-byte sub-authorities (little-endian)
+            for (int i = 0; i < subAuthorityCount; i++)
+            {
+                uint subAuthority = BitConverter.ToUInt32(bytes, 8 + (i * 4));
+                sb.Append($"-{subAuthority}");
+            }
+
+            return sb.ToString();
+        }
+
         static string GetNamingContext(LdapConnection connection)
         {
             var request = new SearchRequest(null, "(objectClass=*)", SearchScope.Base, "defaultNamingContext");
             var response = (SearchResponse)connection.SendRequest(request);
-            return response.Entries[0].Attributes["defaultNamingContext"][0].ToString();
+            return response.Entries[0].Attributes["defaultNamingContext"][0].ToString()!;
         }
 
         static async Task Main(string[] args)
