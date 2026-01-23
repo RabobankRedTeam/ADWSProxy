@@ -94,7 +94,7 @@ namespace ADWSProxy
                 {
                     if (!gc.Contains('.') && !string.IsNullOrWhiteSpace(parsedArgs.Value.Domain))
                     {
-                        gc = $"{dc}.{parsedArgs.Value.Domain}";
+                        gc = $"{gc}.{parsedArgs.Value.Domain}";
                     }
                     var GCEndpoint = $"0.0.0.0:{parsedArgs.Value.GCPort}";
                     GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance!, parsedArgs.Value.Mode, credentials);
