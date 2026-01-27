@@ -4,6 +4,7 @@ using Flexinets.Ldap.Core;
 using log4net;
 using System.Net;
 using System.Reflection;
+using System.Security.Authentication.ExtendedProtection;
 using System.ServiceModel;
 using System.ServiceModel.Channels;
 
@@ -13,7 +14,7 @@ namespace ADWSProxy.ADWS
     {
         private static readonly ILog logger = LogManager.GetLogger(type: MethodBase.GetCurrentMethod()!.DeclaringType!);
 
-        private NetTcpBinding? _binding = null;
+        private CustomBinding? _binding = null;
 
         private ResourceClient? _resource = null;
 
@@ -42,7 +43,7 @@ namespace ADWSProxy.ADWS
             }
         }
 
-        private NetTcpBinding Binding
+        private CustomBinding Binding
         {
             get
             {
@@ -50,7 +51,7 @@ namespace ADWSProxy.ADWS
                 {
                     logger.Debug($"Constructing new {typeof(NetTcpBinding).FullName}.");
 
-                    _binding = new NetTcpBinding
+                    var binding = new NetTcpBinding
                     {
                         MaxReceivedMessageSize = Helpers.BufferSize,
                         CloseTimeout = new TimeSpan(0, 10, 0),
@@ -59,28 +60,41 @@ namespace ADWSProxy.ADWS
                         SendTimeout = new TimeSpan(0, 10, 0)
                     };
 
-                    _binding.ReaderQuotas.MaxDepth = 10;
-                    _binding.ReaderQuotas.MaxStringContentLength = 32768;
-                    _binding.ReaderQuotas.MaxArrayLength = 16384;
+                    binding.ReaderQuotas.MaxDepth = 10;
+                    binding.ReaderQuotas.MaxStringContentLength = 32768;
+                    binding.ReaderQuotas.MaxArrayLength = 16384;
 
                     if (Mode == AdwsEndpoint.Windows)
                     {
-                        _binding.Security.Mode = SecurityMode.Transport;
-                        _binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.Windows;
-                        _binding.Security.Transport.ProtectionLevel = System.Net.Security.ProtectionLevel.EncryptAndSign;
-                        _binding.Security.Message.ClientCredentialType = MessageCredentialType.None;
+                        binding.Security.Mode = SecurityMode.Transport;
+                        binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.Windows;
+                        binding.Security.Transport.ProtectionLevel = System.Net.Security.ProtectionLevel.EncryptAndSign;
+                        binding.Security.Message.ClientCredentialType = MessageCredentialType.None;
                     }
                     else
                     {
-                        _binding.Security.Mode = SecurityMode.TransportWithMessageCredential;
-                        _binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.None;
-                        _binding.Security.Message.ClientCredentialType = MessageCredentialType.UserName;
+                        binding.Security.Mode = SecurityMode.TransportWithMessageCredential;
+                        binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.None;
+                        binding.Security.Message.ClientCredentialType = MessageCredentialType.UserName;
                     }
 
-                    logger.Debug($"Using EncryptAndSing on Transport {_binding.Security.Transport.ProtectionLevel == System.Net.Security.ProtectionLevel.EncryptAndSign}");
+                    logger.Debug($"Using EncryptAndSing on Transport {binding.Security.Transport.ProtectionLevel == System.Net.Security.ProtectionLevel.EncryptAndSign}");
 
-                    logger.Debug($"Using MessageCrentialType.Windows {_binding.Security.Message.ClientCredentialType == MessageCredentialType.Windows}");
+                    logger.Debug($"Using MessageCrentialType.Windows {binding.Security.Message.ClientCredentialType == MessageCredentialType.Windows}");
+
+                    _binding = new CustomBinding(binding);
+                    var transportElement = _binding.Elements.Find<TcpTransportBindingElement>();
+                    if (transportElement != null)
+                    {
+                        transportElement.ExtendedProtectionPolicy = new ExtendedProtectionPolicy(PolicyEnforcement.WhenSupported);
+                    }
+                    var securityElement = _binding.Elements.Find<SecurityBindingElement>();
+                    if (securityElement != null)
+                    {
+                        securityElement.IncludeTimestamp = true;
+                    }
                 }
+
                 return _binding;
             }
         }
