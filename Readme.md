@@ -5,7 +5,7 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
 ---
 
 ## Key Features
-* **Cross-Platform:** Runs on Windows, Linux, and macOS.
+* **Cross-Platform:** Runs on Windows, Linux, and MacOS.
 * **Docker Ready:** Optimized for lightweight Linux containers (Alpine/Debian).
 * **Native SID Parsing:** Includes a custom binary-to-string SID parser, eliminating dependencies on Windows-only system libraries.
 * **Modern Tooling:** Built using .NET 8 (LTS) SDK and `dotnet-svcutil`.
@@ -19,19 +19,20 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
   --adwsdcport             (Default: 9389) The ADWS port to proxy to on the domain controller
   --adwsgcport             (Default: 9389) The ADWS port to proxy to on the global catalog
   --consoleloglevel        (Default: INFO) Set the log level for the console output
-  --dnsport                (Default: 53) The DNS port to proxy from
-  -D, --domain             The domain to authenticate to ADWS
-  --domaincontroller       Required. The domain controller to proxy to
+  --domaincontroller       Required. The domain controller to proxy to for NTDS
   --exitondnsstarterror    (Default: true) Exit if the DNS port is already in use
-  --gcinstance             (Default: ldap:3268) The GC instance within ADWS
   --gcport                 (Default: 3268) The GC port to proxy from
-  --globalcatalog          The global catalog to proxy to
-  --ldapinstance           (Default: ldap:389) The LDAP instance within ADWS
+  --globalcatalog          (Default: only DC/NTDS is used) The global catalog to proxy to
+  --hostip                 (Default: system IP) Override the IP in the DNS respones
   --ldapport               (Default: 389) The LDAP port to proxy from
   --logdirectory           (Default: .) The log directory for runtime logs
   -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username.
-  -p, --password           The password to authenticate to ADWS
+  --only-use-gc-backend    (Default: false) Force ADWS to use GC instance (ldap:3268) for all backend communication
+
+These credentials can either be ommited or all need to be filled in. If empty then the current Windows domain session will be used.
   -u, --username           The username to authenticate to ADWS
+  -p, --password           The password to authenticate to ADWS
+  -D, --domain             The domain to authenticate to ADWS
   --help                   Display this help screen.
   --version                Display version information.
   ```
@@ -47,13 +48,13 @@ Windows Server 2025 has removed the `/UserName` endpoints so only `--mode Window
 This mode can be used without explicitly noting credentials by using the current Windows session:
 
 ```powershell
-.\ADWSProxy.exe --domaincontroller "dc01"
+.\ADWSProxy.exe --domaincontroller "dc01.[...]"
 ```
 
-It's also possible to explicitly set credentials to use, for instance when running from a non domain joined machine and/or a docker container.
+It's also possible to explicitly set credentials to use, for instance when running from a non domain joined machine or a machine that is joined to a different domain.
 
 ```powershell
-.\ADWSProxy.exe -u "user" -p "password" --domain "[...]" --domaincontroller "dc01"
+.\ADWSProxy.exe -u "user" -p "password" --domain "[...]" --domaincontroller "dc01.[...]"
 ```
 
 #### Older versions
@@ -61,18 +62,21 @@ It's also possible to explicitly set credentials to use, for instance when runni
 Older versions of Windows do support the `/UserName` endpoints so we can also use those to obtain data via ADWS:
 
 ```powershell
-.\ADWSProxy.exe -m "Username" -u "user" -p "password" --domain "[...]" --domaincontroller "dc01"
+.\ADWSProxy.exe -m "Username" -u "user" -p "password" --domain "[...]" --domaincontroller "dc01.[...]"
 ```
 
 ### Linux/Docker Example:
 ```bash
 docker run -p 389:389 -p 9389:9389 adwsproxy:latest \
   --mode Windows \
-  --username "luc" \
+  --username "user" \
   --password "password" \
-  --domaincontroller dc01 \
+  --domaincontroller dc01.[...] \
   --domain [...]
 ```
+
+It should be noted that this will result in event viewer logs on a default Windows Server 2025 installation.
+To be exact it's event 4023 because of "Channel Binding: Not Supported".
 
 ## Technical Details
 
@@ -101,7 +105,7 @@ Server 2025 enforces strict integrity requirements. All NTLM/Kerberos tokens mus
 
 ### NTLMv1 Retirement
 
-Server 2025 has effectively retired NTLMv1. If running this tool from a Linux/Docker environment, ensure you have the `gss-ntlmssp` package installed to support modern NTLMv2/Negotiate handshakes.
+Server 2025 has effectively retired NTLMv1. If running this tool from a Linux environment, ensure you have the `gss-ntlmssp` package installed to support modern NTLMv2/Negotiate handshakes.
 
 ## Integration Testing (Bloodhound)
 
@@ -111,6 +115,8 @@ Server 2025 has effectively retired NTLMv1. If running this tool from a Linux/Do
 # Example using NTLM authentication through the proxy
 python3 -m bloodhound -u x -p x -d [...] --auth ntlm -ns 127.0.0.1 -c All
 ```
+
+>Technical Note: Bloodhound-Python can't run with `only-use-gc-backend` set to true as the dataset returned by the GC is less complete than the default dataset.
 
 ## Blog Post & Background
 

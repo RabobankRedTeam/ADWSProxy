@@ -1,12 +1,12 @@
-﻿using ADWSProxy.LDAP;
+﻿using ADWSProxy.DNS;
+using ADWSProxy.LDAP;
+using ARSoft.Tools.Net.Dns;
 using CommandLine;
 using CommandLine.Text;
-using DNS.Server;
 using log4net;
 using Newtonsoft.Json;
 using System.Globalization;
 using System.Net;
-using System.Net.NetworkInformation;
 
 namespace ADWSProxy
 {
@@ -73,17 +73,15 @@ namespace ADWSProxy
 
             try
             {
+                const string gcInstance = "ldap:3268";
+                string ldapInstance = parsedArgs.Value.OnlyUseGCBacked!.Value ? gcInstance : "ldap:389";
                 var LDAPEndpoint = $"0.0.0.0:{parsedArgs.Value.LDAPPort}";
                 var dc = parsedArgs.Value.DomainController;
                 ArgumentNullException.ThrowIfNullOrWhiteSpace(dc);
-                if (!dc.Contains('.') && !string.IsNullOrWhiteSpace(parsedArgs.Value.Domain))
-                {
-                    dc = $"{dc}.{parsedArgs.Value.Domain}";
-                }
 
-                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance!, parsedArgs.Value.Mode, credentials);
+                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, parsedArgs.Value.ADWSDCPort, ldapInstance, parsedArgs.Value.Mode, credentials);
                 LDAPListener.Start();
-                logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {parsedArgs.Value.LDAPInstance}");
+                logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {ldapInstance}");
 
                 var gc = parsedArgs.Value.GlobalCatalog;
                 if (string.IsNullOrWhiteSpace(gc))
@@ -92,22 +90,18 @@ namespace ADWSProxy
                 }
                 else
                 {
-                    if (!gc.Contains('.') && !string.IsNullOrWhiteSpace(parsedArgs.Value.Domain))
-                    {
-                        gc = $"{gc}.{parsedArgs.Value.Domain}";
-                    }
                     var GCEndpoint = $"0.0.0.0:{parsedArgs.Value.GCPort}";
-                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance!, parsedArgs.Value.Mode, credentials);
+
+                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, parsedArgs.Value.ADWSGCPort, gcInstance, parsedArgs.Value.Mode, credentials);
                     GCListener.Start();
-                    logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {parsedArgs.Value.GCInstance}");
+                    logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {gcInstance}");
                 }
 
                 try
                 {
-                    var dnsEndpoint = CreateIPEndPoint($"0.0.0.0:{parsedArgs.Value.DnsPort}");
-                    if (StartDNS(true, dnsEndpoint, parsedArgs.Value.LDAPPort, parsedArgs.Value.GCPort))
+                    if (StartDNS(parsedArgs.Value.ExitOnDNSStartError ?? false, parsedArgs.Value.LDAPPort, parsedArgs.Value.GCPort, parsedArgs.Value.HostIP))
                     {
-                        logger.Info($"Succesfully started the DNSListener on {dnsEndpoint}");
+                        logger.Info($"Succesfully started the DNSListener");
                     }
                     else
                     {
@@ -158,27 +152,26 @@ namespace ADWSProxy
             Environment.Exit(exitCode);
         }
 
-        /// <summary>
-        /// This wil start a DNS Server listening on UDP/53.
-        /// </summary>
-        private static bool StartDNS(bool ExitOnDNSStartError, IPEndPoint dnsEndpoint, ushort ldapPort, ushort gcPort)
+        private static bool StartDNS(bool ExitOnDNSStartError, ushort ldapPort, ushort gcPort, string? hostIp = null)
         {
-            bool alreadyinuse = IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners().Any(p => p.Port == dnsEndpoint.Port);
-            if (alreadyinuse)
+            try
             {
-                string errorMessage = $"Port UDP/{dnsEndpoint.Port} is already in use, unable to start DNS resolver.";
-                logger.Error(errorMessage);
+                IPAddress? h = string.IsNullOrWhiteSpace(hostIp) ? null : IPAddress.Parse(hostIp);
+                var resolver = new Resolver(ldapPort, gcPort, h);
+                DnsServer server = new(10, 10);
+                server.QueryReceived += resolver.OnQueryReceived;
+                server.Start();
+                logger.Info("DNS Server is live on UDP and TCP port 53.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Error starting DNS server", ex);
                 if (ExitOnDNSStartError)
                 {
                     Environment.Exit(1);
                 }
                 return false;
-            }
-            else
-            {
-                DnsServer dnsServer = new(new DNS.Resolver(ldapPort, gcPort), dnsEndpoint);
-                dnsServer.Listen();
-                return true;
             }
         }
     }

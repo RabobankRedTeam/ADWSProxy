@@ -1,7 +1,7 @@
 # See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
-FROM mcr.microsoft.com/dotnet/runtime:8.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gss-ntlmssp \
     libldap-2.5-0 \
@@ -9,10 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     netcat-openbsd \
     dnsutils \
     && rm -rf /var/lib/apt/lists/*
-USER $APP_UID
 WORKDIR /app
+EXPOSE 53
 EXPOSE 389
 EXPOSE 3268
+
+USER $APP_UID
 
 # This stage is used to build the service project
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build

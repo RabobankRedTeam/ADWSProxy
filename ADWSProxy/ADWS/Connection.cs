@@ -78,20 +78,40 @@ namespace ADWSProxy.ADWS
                         binding.Security.Message.ClientCredentialType = MessageCredentialType.UserName;
                     }
 
-                    logger.Debug($"Using EncryptAndSing on Transport {binding.Security.Transport.ProtectionLevel == System.Net.Security.ProtectionLevel.EncryptAndSign}");
-
-                    logger.Debug($"Using MessageCrentialType.Windows {binding.Security.Message.ClientCredentialType == MessageCredentialType.Windows}");
+                    logger.Debug($"Using binding.Security.Mode: {binding.Security.Mode}");
+                    logger.Debug($"Using binding.Security.Transport.ClientCredentialType: {binding.Security.Transport.ClientCredentialType}");
+                    logger.Debug($"binding.Security.Transport.ProtectionLevel: {binding.Security.Transport.ProtectionLevel}");
+                    logger.Debug($"binding.Security.Message.ClientCredentialType: {binding.Security.Message.ClientCredentialType}");
 
                     _binding = new CustomBinding(binding);
                     var transportElement = _binding.Elements.Find<TcpTransportBindingElement>();
                     if (transportElement != null)
                     {
-                        transportElement.ExtendedProtectionPolicy = new ExtendedProtectionPolicy(PolicyEnforcement.WhenSupported);
+                        // Setting this value to Always is only supported on Windows at this time.
+                        if (OperatingSystem.IsWindows())
+                        {
+                            transportElement.ExtendedProtectionPolicy = new ExtendedProtectionPolicy(PolicyEnforcement.Always);
+                        }
+                        else
+                        {
+                            transportElement.ExtendedProtectionPolicy = new ExtendedProtectionPolicy(PolicyEnforcement.WhenSupported, ProtectionScenario.TransportSelected, new ServiceNameCollection(new[]
+                            {
+                                $"identity/{Server}",
+                                $"identity/{Server.Split('.')[0]}",
+                                $"host/{Server}",
+                                $"ldap/{Server}",
+                                $"ldap/{Server}/{Server[(Server.IndexOf('.') + 1)..]}",
+                                $"identity/{Server}:9389"
+                            }));
+                        }
+                        logger.Debug($"transportElement.ExtendedProtectionPolicy: {transportElement.ExtendedProtectionPolicy}");
                     }
                     var securityElement = _binding.Elements.Find<SecurityBindingElement>();
                     if (securityElement != null)
                     {
                         securityElement.IncludeTimestamp = true;
+                        logger.Debug($"securityElement.IncludeTimestamp: {securityElement.IncludeTimestamp}");
+
                     }
                 }
 
@@ -103,6 +123,19 @@ namespace ADWSProxy.ADWS
         private string Instance { get; }
         private int Port { get; }
 
+        private EndpointIdentity? Identity
+        {
+            get
+            {
+                return Mode switch
+                {
+                    AdwsEndpoint.Windows => new SpnEndpointIdentity($"host/{Server.ToLower()}"),
+                    AdwsEndpoint.Username => new DnsEndpointIdentity(Server),
+                    _ => null
+                };
+            }
+        }
+
         private ResourceClient ResourceClient
         {
             get
@@ -111,36 +144,24 @@ namespace ADWSProxy.ADWS
                 {
                     logger.Debug($"Constructing new {typeof(ResourceClient).FullName}");
 
-                    UriBuilder uriBuilder = new()
-                    {
-                        Scheme = "net.tcp",
-                        Host = Server,
-                        Port = Port,
-
-                        Path = $"ActiveDirectoryWebServices/{Auth}/Resource"
-                    };
-
-                    var endpoint = new EndpointAddress(uriBuilder.Uri, null, Array.Empty<AddressHeader>());
+                    var endpoint = new EndpointAddress(CreateUri("Resource"), Identity, []);
 
                     _resource = new ResourceClient(Binding, endpoint);
                     if (Credential != null)
                     {
-                        if (Mode == AdwsEndpoint.Windows)
+                        switch (Mode)
                         {
-                            _resource.ClientCredentials.Windows.ClientCredential.UserName = Credential.UserName;
-                            _resource.ClientCredentials.Windows.ClientCredential.Password = Credential.Password;
-                            _resource.ClientCredentials.Windows.ClientCredential.Domain = Credential.Domain;
-                            _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
-
-                        }
-                        else
-                        {
-                            _resource.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
-                            _resource.ClientCredentials.UserName.Password = Credential.Password;
-                            _resource.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
+                            case AdwsEndpoint.Windows:
+                                _resource.ClientCredentials.Windows.ClientCredential = Credential;
+                                _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+                                break;
+                            case AdwsEndpoint.Username:
+                                _resource.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
+                                _resource.ClientCredentials.UserName.Password = Credential.Password;
+                                _resource.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
+                                break;
                         }
                     }
-                    _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
                 }
 
                 return _resource;
@@ -155,38 +176,40 @@ namespace ADWSProxy.ADWS
                 {
                     logger.Debug($"Constructing new {typeof(SearchClient).FullName}");
 
-                    UriBuilder uriBuilder = new()
-                    {
-                        Scheme = "net.tcp",
-                        Host = Server,
-                        Port = Port,
-
-                        Path = $"ActiveDirectoryWebServices/{Auth}/Enumeration"
-                    };
-
-                    var endpoint = new EndpointAddress(uriBuilder.Uri, null, Array.Empty<AddressHeader>());
+                    var endpoint = new EndpointAddress(CreateUri("Enumeration"), Identity, []);
 
                     _search = new SearchClient(Binding, endpoint);
 
                     if (Credential != null)
                     {
-                        if (Mode == AdwsEndpoint.Windows)
+                        switch (Mode)
                         {
-                            _search.ClientCredentials.Windows.ClientCredential.UserName = Credential.UserName;
-                            _search.ClientCredentials.Windows.ClientCredential.Password = Credential.Password;
-                            _search.ClientCredentials.Windows.ClientCredential.Domain = Credential.Domain;
-                        }
-                        else
-                        {
-                            _search.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
-                            _search.ClientCredentials.UserName.Password = Credential.Password;
-                            _search.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
+                            case AdwsEndpoint.Windows:
+                                _search.ClientCredentials.Windows.ClientCredential = Credential;
+                                _search.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+                                break;
+                            case AdwsEndpoint.Username:
+                                _search.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
+                                _search.ClientCredentials.UserName.Password = Credential.Password;
+                                _search.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
+                                break;
                         }
                     }
-                    _search.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
                 }
                 return _search;
             }
+        }
+
+        private Uri CreateUri(string endpoint)
+        {
+            return new UriBuilder()
+            {
+                Scheme = "net.tcp",
+                Host = Server,
+                Port = Port,
+
+                Path = $"ActiveDirectoryWebServices/{Auth}/{endpoint}"
+            }.Uri;
         }
 
         private string Server { get; }
