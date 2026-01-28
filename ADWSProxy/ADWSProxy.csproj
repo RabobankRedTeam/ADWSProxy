@@ -27,6 +27,8 @@
 		<PackageReference Include="System.DirectoryServices.Protocols" Version="8.0.*" />
 
 		<PackageReference Include="System.Xml.XmlSerializer" Version="4.3.0" />
+
+		<RuntimeHostConfigurationOption Include="System.Net.Security.UseManagedNtlm" Value="true" />
 	</ItemGroup>
 
 </Project>

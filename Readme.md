@@ -75,9 +75,6 @@ docker run -p 389:389 -p 9389:9389 adwsproxy:latest \
   --domain [...]
 ```
 
-It should be noted that this will result in event viewer logs on a default Windows Server 2025 installation.
-To be exact it's event 4023 because of "Channel Binding: Not Supported".
-
 ## Technical Details
 
 ### Binary SID Parsing
