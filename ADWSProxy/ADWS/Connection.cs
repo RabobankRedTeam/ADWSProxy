@@ -153,7 +153,6 @@ namespace ADWSProxy.ADWS
                         {
                             case AdwsEndpoint.Windows:
                                 _resource.ClientCredentials.Windows.ClientCredential = Credential;
-                                _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
                                 break;
                             case AdwsEndpoint.Username:
                                 _resource.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
@@ -162,6 +161,8 @@ namespace ADWSProxy.ADWS
                                 break;
                         }
                     }
+                    _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+
                 }
 
                 return _resource;
@@ -186,7 +187,6 @@ namespace ADWSProxy.ADWS
                         {
                             case AdwsEndpoint.Windows:
                                 _search.ClientCredentials.Windows.ClientCredential = Credential;
-                                _search.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
                                 break;
                             case AdwsEndpoint.Username:
                                 _search.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
@@ -195,6 +195,7 @@ namespace ADWSProxy.ADWS
                                 break;
                         }
                     }
+                    _search.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
                 }
                 return _search;
             }
