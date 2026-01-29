@@ -28,6 +28,7 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
   --logdirectory           (Default: .) The log directory for runtime logs
   -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username.
   --only-use-gc-backend    (Default: false) Force ADWS to use GC instance (ldap:3268) for all backend communication
+  --skip-dns               (Default: false) Skip starting the DNS listener
 
 These credentials can either be ommited or all need to be filled in. If empty then the current Windows domain session will be used.
   -u, --username           The username to authenticate to ADWS
