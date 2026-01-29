@@ -97,22 +97,30 @@ namespace ADWSProxy
                     logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {gcInstance}");
                 }
 
-                try
+                if (parsedArgs.Value.SkipDns!.Value)
                 {
-                    if (StartDNS(parsedArgs.Value.ExitOnDNSStartError ?? false, parsedArgs.Value.LDAPPort, parsedArgs.Value.GCPort, parsedArgs.Value.HostIP))
+                    logger.Info("Skipping DNS listener startup");
+                }
+                else
+                {
+                    try
                     {
-                        logger.Info($"Succesfully started the DNSListener");
+                        if (StartDNS(parsedArgs.Value.ExitOnDNSStartError ?? false, parsedArgs.Value.LDAPPort, parsedArgs.Value.GCPort, parsedArgs.Value.HostIP))
+                        {
+                            logger.Info($"Succesfully started the DNSListener");
+                        }
+                        else
+                        {
+                            const string errorString = "Error starting DNSListner";
+                            throw new Exception(errorString);
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        const string errorString = "Error starting DNSListner";
-                        throw new Exception(errorString);
+                        logger.Error(ex.Message, ex);
                     }
                 }
-                catch (Exception ex)
-                {
-                    logger.Error(ex.Message, ex);
-                }
+
 
                 try
                 {

@@ -83,6 +83,9 @@ namespace ADWSProxy
         [Option('m', "mode", Required = false, Default = AdwsEndpoint.Windows, HelpText = "ADWS Endpoint Mode: 'Windows' (default, NTLM/Kerberos) or 'Username' (Legacy TLS).")]
         public AdwsEndpoint Mode { get; set; }
 
+        [Option("skipdns", Required = false, Default = false, HelpText = "Skip starting the DNS listener")]
+        public bool? SkipDns { get; set; }
+
         public NetworkCredential? GetNetworkCredential()
         {
             if (Username == null && Password == null && Domain == null) return null;
