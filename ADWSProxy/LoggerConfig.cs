@@ -11,7 +11,7 @@ namespace ADWSProxy
     {
         public static void ConfigureLogger(string ConsoleFilterLevel, string LogDirectory)
         {
-            var hierarchy = (Hierarchy)LogManager.GetRepository();
+            var hierarchy = (Hierarchy)LogManager.GetRepository(typeof(LoggerConfig).Assembly);
 
             // Pattern layout
             var patternLayout = new PatternLayout

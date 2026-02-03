@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using System.ServiceModel;
+﻿using System.ServiceModel;
 using System.ServiceModel.Channels;
 using System.Xml;
 
@@ -9,8 +8,11 @@ namespace ADWSProxy.ADWS.Request
     {
         public MessageFault Fault { get; private set; } = fault ?? throw new ArgumentNullException(nameof(fault));
 
-        public override string Message => $"ADWS Encountered '{ErrorType}', {JsonConvert.SerializeObject(Errors)}";
-
+        public override string Message =>
+            $"ADWS Encountered '{ErrorType}'. Details: " +
+            (Errors != null && Errors.Count > 0
+                ? string.Join("; ", Errors.Select(e => $"[{e.Key}: {e.Value}]"))
+                : "No detailed errors provided.");
         public string? ErrorType { get; private set; } = ErrorType;
         public Dictionary<string, string> Errors { get; private set; } = Errors;
 

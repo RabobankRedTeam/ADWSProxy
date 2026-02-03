@@ -1,4 +1,12 @@
 <Solution>
-  <Project Path="ADWSProxy/ADWSProxy.csproj" />
-  <Project Path="TestClient/TestClient.csproj" Id="6914df89-f0a6-415d-8d03-848622b8ef97" />
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="ADWSProxy/ADWSProxy.csproj">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
+  <Project Path="TestClient/TestClient.csproj" Id="6914df89-f0a6-415d-8d03-848622b8ef97">
+    <Platform Solution="*|x64" Project="x64" />
+  </Project>
 </Solution>

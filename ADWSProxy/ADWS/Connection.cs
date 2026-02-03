@@ -3,7 +3,6 @@ using ADWSProxy.LDAP;
 using Flexinets.Ldap.Core;
 using log4net;
 using System.Net;
-using System.Reflection;
 using System.Security.Authentication.ExtendedProtection;
 using System.ServiceModel;
 using System.ServiceModel.Channels;
@@ -12,13 +11,13 @@ namespace ADWSProxy.ADWS
 {
     internal class Connection
     {
-        private static readonly ILog logger = LogManager.GetLogger(type: MethodBase.GetCurrentMethod()!.DeclaringType!);
+        private static readonly ILog logger = LogHelper.GetLogger(typeof(Connection));
 
         private CustomBinding? _binding = null;
 
-        private ResourceClient? _resource = null;
+        private Resource? _resource = null;
 
-        private SearchClient? _search = null;
+        private Search? _search = null;
 
         public Connection(string server, int port, string instance, AdwsEndpoint mode, NetworkCredential? credential = null)
         {
@@ -136,66 +135,63 @@ namespace ADWSProxy.ADWS
             }
         }
 
-        private ResourceClient ResourceClient
+        private T CreateChannel<T>(string endpointName, Binding binding, NetworkCredential? credential, AdwsEndpoint mode) where T : class
+        {
+            logger.Debug($"Constructing new {typeof(T).FullName} via {typeof(ChannelFactory<T>)}");
+
+            var endpoint = new EndpointAddress(CreateUri(endpointName), Identity, []);
+            var factory = new ChannelFactory<T>(binding, endpoint);
+
+            if (credential != null)
+            {
+                switch (mode)
+                {
+                    case AdwsEndpoint.Windows:
+                        factory.Credentials.Windows.ClientCredential = credential;
+                        break;
+                    case AdwsEndpoint.Username:
+                        factory.Credentials.UserName.UserName = $"{credential.UserName}@{credential.Domain}";
+                        factory.Credentials.UserName.Password = credential.Password;
+                        factory.Credentials.ServiceCertificate.Authentication.CertificateValidationMode =
+                            System.ServiceModel.Security.X509CertificateValidationMode.None;
+                        break;
+                }
+            }
+            factory.Credentials.Windows.AllowedImpersonationLevel =
+                System.Security.Principal.TokenImpersonationLevel.Impersonation;
+
+            // Create the channel
+            var channel = factory.CreateChannel();
+
+            // Explicitly open the channel
+            if (channel is ICommunicationObject commObj)
+            {
+                commObj.Open();
+            }
+
+            return channel;
+        }
+
+        private Resource ResourceClient
         {
             get
             {
-                if (_resource == null || _resource.State == CommunicationState.Closed)
+                if (_resource == null || ((IClientChannel)_resource).State == CommunicationState.Faulted || ((IClientChannel)_resource).State == CommunicationState.Closed)
                 {
-                    logger.Debug($"Constructing new {typeof(ResourceClient).FullName}");
-
-                    var endpoint = new EndpointAddress(CreateUri("Resource"), Identity, []);
-
-                    _resource = new ResourceClient(Binding, endpoint);
-                    if (Credential != null)
-                    {
-                        switch (Mode)
-                        {
-                            case AdwsEndpoint.Windows:
-                                _resource.ClientCredentials.Windows.ClientCredential = Credential;
-                                break;
-                            case AdwsEndpoint.Username:
-                                _resource.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
-                                _resource.ClientCredentials.UserName.Password = Credential.Password;
-                                _resource.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
-                                break;
-                        }
-                    }
-                    _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
-
+                    _resource = CreateChannel<Resource>("Resource", Binding, Credential, Mode);
                 }
 
                 return _resource;
             }
         }
 
-        private SearchClient SearchClient
+        private Search SearchClient
         {
             get
             {
-                if (_search == null || _search.State == CommunicationState.Closed)
+                if (_search == null || ((IClientChannel)_search).State == CommunicationState.Faulted || ((IClientChannel)_search).State == CommunicationState.Closed)
                 {
-                    logger.Debug($"Constructing new {typeof(SearchClient).FullName}");
-
-                    var endpoint = new EndpointAddress(CreateUri("Enumeration"), Identity, []);
-
-                    _search = new SearchClient(Binding, endpoint);
-
-                    if (Credential != null)
-                    {
-                        switch (Mode)
-                        {
-                            case AdwsEndpoint.Windows:
-                                _search.ClientCredentials.Windows.ClientCredential = Credential;
-                                break;
-                            case AdwsEndpoint.Username:
-                                _search.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
-                                _search.ClientCredentials.UserName.Password = Credential.Password;
-                                _search.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
-                                break;
-                        }
-                    }
-                    _search.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+                    _search = CreateChannel<Search>("Enumeration", Binding, Credential, Mode);
                 }
                 return _search;
             }
@@ -223,7 +219,7 @@ namespace ADWSProxy.ADWS
             var messageBuffer = new GetRequest(Instance).CreateBufferedCopy();
             messageBuffer.WriteMessageToDebug(logger);
 
-            var rootDSEResponse = ResourceClient.GetAsync(messageBuffer.CreateMessage()).Result;
+            var rootDSEResponse = ResourceClient.Get(messageBuffer.CreateMessage());
             var rootDSEResponseBuffer = rootDSEResponse.CreateBufferedCopy();
             rootDSEResponseBuffer.WriteMessageToDebug(logger);
 
@@ -293,7 +289,7 @@ namespace ADWSProxy.ADWS
                 var enumerateRequest = new EnumerateRequest(Instance, filter, dn, scope, fields).CreateBufferedCopy();
                 enumerateRequest.WriteMessageToDebug(logger);
 
-                var enumerateResponse = SearchClient.EnumerateAsync(enumerateRequest.CreateMessage()).Result;
+                var enumerateResponse = SearchClient.Enumerate(enumerateRequest.CreateMessage());
                 var enumerateResponseBuffer = enumerateResponse.CreateBufferedCopy();
                 enumerateResponseBuffer.WriteMessageToDebug(logger);
 
@@ -317,7 +313,7 @@ namespace ADWSProxy.ADWS
                         var renewRequestBuffer = new RenewRequest(Instance, enumerateContext!, DateTime.Now.AddMinutes(25)).CreateBufferedCopy();
                         renewRequestBuffer.WriteMessageToDebug(logger);
 
-                        var renewResponse = SearchClient.RenewAsync(renewRequestBuffer.CreateMessage()).Result;
+                        var renewResponse = SearchClient.Renew(renewRequestBuffer.CreateMessage());
                         var renewResponseBuffer = renewResponse.CreateBufferedCopy();
                         renewResponseBuffer.WriteMessageToDebug(logger);
 
@@ -338,7 +334,7 @@ namespace ADWSProxy.ADWS
                     var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext!).CreateBufferedCopy();
                     pullRequest.WriteMessageToDebug(logger);
 
-                    var pullResponse = SearchClient.PullAsync(pullRequest.CreateMessage()).Result;
+                    var pullResponse = SearchClient.Pull(pullRequest.CreateMessage());
                     var pullResponseBuffer = pullResponse.CreateBufferedCopy();
                     pullResponseBuffer.WriteMessageToDebug(logger);
 
@@ -367,7 +363,7 @@ namespace ADWSProxy.ADWS
                     logger.Info($"Releasing enumerateContext: {enumerateContext}");
                     var releaseRequest = new ReleaseRequest(Instance, enumerateContext).CreateBufferedCopy();
                     releaseRequest.WriteMessageToDebug(logger);
-                    var releaseResponse = SearchClient.ReleaseAsync(releaseRequest.CreateMessage()).Result;
+                    var releaseResponse = SearchClient.Release(releaseRequest.CreateMessage());
                     var releaseResponseBuffer = releaseResponse.CreateBufferedCopy();
                     releaseResponseBuffer.WriteMessageToDebug(logger);
                     if (releaseResponse.IsFault)

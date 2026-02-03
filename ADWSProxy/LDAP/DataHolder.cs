@@ -7,5 +7,10 @@ namespace ADWSProxy.LDAP
         public object Data { get; } = data;
         public UniversalDataType DataType { get; } = dataType ?? throw new ArgumentNullException(nameof(dataType));
         public string Name { get; } = name;
+
+        public override string ToString()
+        {
+            return $"Name:{Name}, DataType:{DataType}, Data:{Data}";
+        }
     }
 }

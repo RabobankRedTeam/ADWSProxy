@@ -23,10 +23,11 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
   --exitondnsstarterror    (Default: true) Exit if the DNS port is already in use
   --gcport                 (Default: 3268) The GC port to proxy from
   --globalcatalog          (Default: only DC/NTDS is used) The global catalog to proxy to
-  --hostip                 (Default: system IP) Override the IP in the DNS respones
+  --hostip                 (Default: system IPv4) Override the IP in the DNS respones
   --ldapport               (Default: 389) The LDAP port to proxy from
+  --listenip               (Default: 0.0.0.0) The IP to listen on for LDAP/GC requests
   --logdirectory           (Default: .) The log directory for runtime logs
-  -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username.
+  -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username
   --only-use-gc-backend    (Default: false) Force ADWS to use GC instance (ldap:3268) for all backend communication
   --skip-dns               (Default: false) Skip starting the DNS listener
 
@@ -67,8 +68,25 @@ Older versions of Windows do support the `/UserName` endpoints so we can also us
 ```
 
 ### Linux/Docker Example:
+
+Building the image from source:
+
 ```bash
-docker run -p 389:389 -p 9389:9389 adwsproxy:latest \
+$ git clone https://github.com/RabobankRedTeam/ADWSProxy.git
+$ cd ADWSProxy
+$ docker build -f ADWSProxy/Dockerfile -t adwsproxy -q .
+$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED         SIZE
+adwsproxy    latest    3cffdc74a52f   4 minutes ago   248MB
+```
+
+Using the image:
+
+```bash
+$ docker run \
+  -p 53:53/tcp -p 53:53/udp -p 389:389/tcp -p 3268:3268/tcp \
+  --hostname DESKTOP-KGL8YVZ \
+  -it adwsproxy:latest \
   --mode Windows \
   --username "user" \
   --password "password" \
@@ -87,12 +105,13 @@ To ensure full Linux compatibility, this version of ADWSProxy bypasses the `Syst
 The ADWS client proxy code (`ActiveDirectoryWebService.cs`) is generated using `dotnet-svcutil`. This ensures compatibility with the .NET 8.0 `System.ServiceModel` stack.
 
 ```powershell
-dotnet --fx-version 8.0.23 "C:\Users\luc\.dotnet\tools\.store\dotnet-svcutil\8.0.0\dotnet-svcutil\8.0.0\tools\net8.0\any\dotnet-svcutil.dll" \
-  net.tcp://dc01.[...]:9389/ActiveDirectoryWebServices/mex \
-  --namespace "*,ADWSProxy.ADWS" \
-  --outputFile "ActiveDirectoryWebService.cs" \
-  --serializer XmlSerializer \
-  --targetFramework net8.0
+dotnet --fx-version 8.0.23 "C:\Users\luc\.dotnet\tools\.store\dotnet-svcutil\8.0.0\dotnet-svcutil\8.0.0\tools\net8.0\any\dotnet-svcutil.dll" `
+  net.tcp://dc01.[...]:9389/ActiveDirectoryWebServices/mex `
+  --namespace "*,ADWSProxy.ADWS" `
+  --outputFile "ActiveDirectoryWebService.cs" `
+  --serializer XmlSerializer `
+  --targetFramework net8.0 `
+  --sync
 ```
 
 ### Mandatory RPC Sealing and Signing

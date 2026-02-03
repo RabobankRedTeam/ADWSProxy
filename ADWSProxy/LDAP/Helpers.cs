@@ -1,7 +1,6 @@
 ﻿using Flexinets.Ldap.Core;
 using log4net;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Text;
 
@@ -9,7 +8,7 @@ namespace ADWSProxy.LDAP
 {
     internal static class Helpers
     {
-        private static readonly ILog logger = LogManager.GetLogger(MethodBase.GetCurrentMethod()?.DeclaringType!);
+        private static readonly ILog logger = LogHelper.GetLogger(typeof(Helpers));
 
         public static string ConvertByteSidToStringSid(byte[] bytes)
         {
@@ -20,7 +19,7 @@ namespace ADWSProxy.LDAP
             string manualSid = ParseSidManually(bytes);
 
             // 2. Perform Windows-specific validation if requested
-            if (logger.IsDebugEnabled && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            if (logger.IsDebugEnabled && OperatingSystem.IsWindows())
             {
                 try
                 {

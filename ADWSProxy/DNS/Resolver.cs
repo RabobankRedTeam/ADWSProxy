@@ -1,13 +1,12 @@
 ﻿using ARSoft.Tools.Net;
 using ARSoft.Tools.Net.Dns;
 using System.Net;
-using System.Reflection;
 
 namespace ADWSProxy.DNS
 {
     internal class Resolver
     {
-        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod()!.DeclaringType!);
+        private static readonly log4net.ILog logger = LogHelper.GetLogger(typeof(Resolver));
 
         public Resolver(ushort ldapPort, ushort gcPort, IPAddress? localIP = null)
         {
@@ -25,8 +24,7 @@ namespace ADWSProxy.DNS
 
         public Task OnQueryReceived(object sender, QueryReceivedEventArgs e)
         {
-            var query = e.Query as DnsMessage;
-            if (query == null) return Task.CompletedTask;
+            if (e.Query is not DnsMessage query) return Task.CompletedTask;
 
             // Create a response based on the query
             DnsMessage response = query.CreateResponseInstance();

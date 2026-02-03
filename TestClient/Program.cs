@@ -10,7 +10,7 @@ namespace TestClient
         // Helper to convert binary SID to LDAP hex filter string: \01\05\00...
         static string ConvertSidToHexFilter(byte[] sidBytes)
         {
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             foreach (byte b in sidBytes)
             {
                 sb.Append(@"\" + b.ToString("X2"));
@@ -110,7 +110,7 @@ namespace TestClient
                 authority = (authority << 8) | bytes[i];
             }
 
-            StringBuilder sb = new StringBuilder();
+            StringBuilder sb = new();
             sb.Append($"S-{revision}-{authority}");
 
             // The rest are 4-byte sub-authorities (little-endian)
@@ -130,7 +130,9 @@ namespace TestClient
             return response.Entries[0].Attributes["defaultNamingContext"][0].ToString()!;
         }
 
+#pragma warning disable IDE0060 // Remove unused parameter
         static async Task Main(string[] args)
+#pragma warning restore IDE0060 // Remove unused parameter
         {
             Console.WriteLine("--- ADWS Proxy Test Client ---");
             Console.WriteLine("Waiting for Proxy to initialize...");
