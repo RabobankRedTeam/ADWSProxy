@@ -29,9 +29,7 @@ namespace ADWSProxy
                 {
                     throw new ArgumentException($"--domaincontroller is required.");
                 }
-                _domainController = Uri.CheckHostName(value).Equals(UriHostNameType.Dns)
-                    ? value
-                    : throw new ArgumentException($"--domaincontroller '{value}' must be a FQDN.");
+                _domainController = value;
             }
         }
 
@@ -55,9 +53,7 @@ namespace ADWSProxy
                 {
                     _globalCatalog = null;
                 }
-                _globalCatalog = Uri.CheckHostName(value).Equals(UriHostNameType.Dns)
-                    ? value
-                    : throw new ArgumentException($"--globalcatalog '{value}' must be a FQDN."); 
+                _globalCatalog = value;
             }
         }
 
