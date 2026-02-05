@@ -6,8 +6,7 @@ namespace ADWSProxy
     {
         private string? _globalCatalog;
         private string? _domainController;
-
-        // Numeric and Boolean types map automatically from the command line
+        
         public int ADWSDCPort { get; set; } = 9389;
         public int ADWSGCPort { get; set; } = 9389;
         public string ConsoleLogLevel { get; set; } = "INFO";
@@ -60,6 +59,7 @@ namespace ADWSProxy
         public string? HostIP { get; set; }
 
         private string _listenIP = "0.0.0.0";
+
         public string ListenIP
         {
             get => _listenIP;
@@ -83,6 +83,8 @@ namespace ADWSProxy
         public string? Username { get; set; }
         public AdwsEndpoint Mode { get; set; } = AdwsEndpoint.Windows;
         public bool SkipDns { get; set; } = false;
+        public bool SkipRootDSE { get; set; } = false;
+
 
         public NetworkCredential? GetNetworkCredential()
         {
@@ -108,6 +110,7 @@ namespace ADWSProxy
             Console.WriteLine("  --listenip <ip>              The IP to listen on for LDAP/GC requests (Default: 0.0.0.0).");
             Console.WriteLine("  --mode <Windows|Username>    ADWS Endpoint Mode (Default: Windows).");
             Console.WriteLine("  --skipdns <true|false>       Skip starting the DNS listener.");
+            Console.WriteLine("  --skiprootdse <true|false>   Skip starting the DNS listener.");
             Console.WriteLine("  --username <user>            Username for ADWS authentication.");
             Console.WriteLine("  --password <pass>            Password for ADWS authentication.");
             Console.WriteLine("  --domain <domain>            Domain for ADWS authentication.");

@@ -28,8 +28,9 @@ A high-performance, cross-platform Active Directory Web Services (ADWS) proxy bu
   --listenip               (Default: 0.0.0.0) The IP to listen on for LDAP/GC requests
   --logdirectory           (Default: .) The log directory for runtime logs
   -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username
-  --only-use-gc-backend    (Default: false) Force ADWS to use GC instance (ldap:3268) for all backend communication
-  --skip-dns               (Default: false) Skip starting the DNS listener
+  --onlyusegcbackend       (Default: false) Force ADWS to use GC instance (ldap:3268) for all backend communication
+  --skipdns                (Default: false) Skip starting the DNS listener
+  --skiprootdse            (Default: false) Skip querying the RootDSE during startup
 
 These credentials can either be ommited or all need to be filled in. If empty then the current Windows domain session will be used.
   -u, --username           The username to authenticate to ADWS
@@ -77,7 +78,7 @@ $ cd ADWSProxy
 $ docker build -f ADWSProxy/Dockerfile -t adwsproxy -q .
 $ docker images
 REPOSITORY   TAG       IMAGE ID       CREATED         SIZE
-adwsproxy    latest    3cffdc74a52f   4 minutes ago   248MB
+adwsproxy    latest    [...]
 ```
 
 Using the image:
@@ -130,7 +131,7 @@ Server 2025 has effectively retired NTLMv1. If running this tool from a Linux en
 
 ```bash
 # Example using NTLM authentication through the proxy
-python3 -m bloodhound -u x -p x -d [...] --auth ntlm -ns 127.0.0.1 -c All
+python3 -m bloodhound -u x -p x -d [...] --auth ntlm -ns 127.0.0.1 -c DCOnly
 ```
 
 >Technical Note: Bloodhound-Python can't run with `only-use-gc-backend` set to true as the dataset returned by the GC is less complete than the default dataset.

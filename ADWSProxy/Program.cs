@@ -139,9 +139,18 @@ namespace ADWSProxy
 
                 try
                 {
-                    var rootDSE = LDAPListener.ADWSConnection.GetRootDSE();
-                    logger.Info("Succesfully got RootDSE via LDAPListener");
-                    logger.Debug($"LDAP RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
+                    if (options.SkipRootDSE)
+                    {
+                        logger.Info("Skipping RootDSE test for LDAP");
+
+                    }
+                    else
+                    {
+                        logger.Info($"Trying to get RootDSE via LDAPListener");
+                        var rootDSE = LDAPListener.ADWSConnection.GetRootDSE();
+                        logger.Info("Succesfully got RootDSE via LDAPListener");
+                        logger.Debug($"LDAP RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -152,9 +161,16 @@ namespace ADWSProxy
                 {
                     if (GCListener != null)
                     {
-                        var rootDSE = GCListener.ADWSConnection.GetRootDSE();
-                        logger.Info("Succesfully got RootDSE via GCListener");
-                        logger.Debug($"GC RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
+                        if (options.SkipRootDSE) {
+                            logger.Info("Skipping RootDSE test for GC");
+                        }
+                        else
+                        {
+                            logger.Info($"Trying to get RootDSE via GCListener");
+                            var rootDSE = GCListener.ADWSConnection.GetRootDSE();
+                            logger.Info("Succesfully got RootDSE via GCListener");
+                            logger.Debug($"GC RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
+                        }
                     }
                 }
                 catch (Exception ex)
