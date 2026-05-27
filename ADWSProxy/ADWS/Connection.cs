@@ -9,7 +9,7 @@ using System.ServiceModel.Channels;
 
 namespace ADWSProxy.ADWS
 {
-    internal class Connection
+    public class Connection
     {
         private static readonly ILog logger = LogHelper.GetLogger(typeof(Connection));
 
@@ -48,7 +48,7 @@ namespace ADWSProxy.ADWS
             {
                 if (_binding == null)
                 {
-                    logger.Debug($"Constructing new {typeof(NetTcpBinding).FullName}.");
+                    logger.Debug($"Constructing new {typeof(NetTcpBinding).FullName}");
 
                     var binding = new NetTcpBinding
                     {
@@ -274,8 +274,15 @@ namespace ADWSProxy.ADWS
             return result;
         }
 
-        internal void Enumerate(string dn, string filter, List<string> fields, string scope, Action<(string, List<DataHolder>)> callback)
+        public void Enumerate(string dn, string filter, List<string> fields, string scope, Action<(string, List<DataHolder>)> callback)
         {
+            if (string.IsNullOrEmpty(dn) && filter.Equals("(objectclass=*)", StringComparison.OrdinalIgnoreCase) && scope.Equals("base", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.Debug("Performing optimized RootDSE retrieval via Search.Enumerate");
+                callback(("", GetRootDSE()));
+                return;
+            }
+
             if (!fields.Any(field => field.Equals("distinguishedname", StringComparison.OrdinalIgnoreCase)))
             {
                 fields.Add("distinguishedname");

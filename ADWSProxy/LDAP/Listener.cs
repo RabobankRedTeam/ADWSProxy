@@ -116,7 +116,7 @@ namespace ADWSProxy.LDAP
 
                     if (isBound)
                     {
-                        logger.Debug("Client is bound. We can continue.");
+                        logger.Debug("Client is bound. We can continue");
 
                         if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.SearchRequest))
                         {
@@ -127,7 +127,7 @@ namespace ADWSProxy.LDAP
                 }
                 catch (ArgumentException ex)
                 {
-                    logger.Error("ArgumentException. Continuing.", ex);
+                    logger.Error("ArgumentException. Continuing", ex);
                 }
                 catch (Exception ex)
                 {
@@ -163,39 +163,6 @@ namespace ADWSProxy.LDAP
             logger.Info($"Request filter = {filter}");
             logger.Info($"Request properties = {string.Join(",", properties)}");
             logger.Info($"Request scopeIdentifier = {scopeValue}, Scope: {scope}");
-
-            // TODO: Check if there is a more elegant solution to this.
-            if (string.IsNullOrEmpty(dn) && filter.Equals("(objectclass=*)", StringComparison.OrdinalIgnoreCase) && scope == "base")
-            {
-                try
-                {
-                    var rootDSE = ADWSConnection.GetRootDSE();
-                    var rootDSEEntryPacket = new LdapPacket(requestPacket.MessageId);
-                    var rootDSEResultEntry = new LdapAttribute(LdapOperation.SearchResultEntry);
-
-                    rootDSEResultEntry.ChildAttributes.Add(new LdapAttribute(UniversalDataType.OctetString, string.Empty));
-                    rootDSEResultEntry = rootDSEResultEntry.AddItemsToResponse(rootDSE);
-
-                    rootDSEEntryPacket.ChildAttributes.Add(rootDSEResultEntry);
-
-                    byte[] responseEntryBytes = rootDSEEntryPacket.GetBytes();
-                    stream.Write(responseEntryBytes, 0, responseEntryBytes.Length);
-
-                    var ldapPacket = new LdapPacket(requestPacket.MessageId);
-                    ldapPacket.ChildAttributes.Add(new LdapResultAttribute(LdapOperation.SearchResultDone, LdapResult.success));
-                    var ldapPacketBytes = ldapPacket.GetBytes();
-                    stream.Write(ldapPacketBytes, 0, ldapPacketBytes.Length);
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex.Message, ex);
-                    var ldapPacket = new LdapPacket(requestPacket.MessageId);
-                    ldapPacket.ChildAttributes.Add(new LdapResultAttribute(LdapOperation.SearchResultDone, LdapResult.operationError, diagnosticMessage: ex.Message));
-                    var ldapPacketBytes = ldapPacket.GetBytes();
-                    stream.Write(ldapPacketBytes, 0, ldapPacketBytes.Length);
-                }
-                return;
-            }
 
             var blockedProperties = new List<string>();
             // Bloodhound.py requested the a number of non existing properties during testing.

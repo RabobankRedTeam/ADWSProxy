@@ -18,7 +18,7 @@ namespace ADWSProxy
             {
                 if (string.IsNullOrWhiteSpace(_domainController))
                 {
-                    throw new ArgumentException($"--domaincontroller '{_domainController}' must be a full FQDN.");
+                    throw new ArgumentException($"--domaincontroller '{_domainController}' must be a full FQDN");
                 }
                 return _domainController;
             }
@@ -26,7 +26,7 @@ namespace ADWSProxy
             {
                 if (string.IsNullOrWhiteSpace(value))
                 {
-                    throw new ArgumentException($"--domaincontroller is required.");
+                    throw new ArgumentException($"--domaincontroller is required");
                 }
                 _domainController = value;
             }
@@ -72,7 +72,7 @@ namespace ADWSProxy
                 }
                 else
                 {
-                    throw new ArgumentException($"--hostip '{value}' is not a valid IPv4 address.");
+                    throw new ArgumentException($"--hostip '{value}' is not a valid IPv4 address");
                 }
             }
         }
@@ -91,7 +91,7 @@ namespace ADWSProxy
             if (Username == null && Password == null && Domain == null) return null;
 
             return (Username == null || Password == null || Domain == null)
-                ? throw new ArgumentException("Username, Password, and Domain must all be provided if any one is entered.")
+                ? throw new ArgumentException("Username, Password, and Domain must all be provided if any one is entered")
                 : new NetworkCredential(Username, Password, Domain);
         }
 
@@ -101,20 +101,20 @@ namespace ADWSProxy
             Console.WriteLine("Created by Rabobank Red Team");
             Console.WriteLine("==============================================");
             Console.WriteLine("Options:");
-            Console.WriteLine("  --domaincontroller <fqdn>    (Required) The DC to proxy to.");
-            Console.WriteLine("  --globalcatalog <fqdn>       The GC to proxy to.");
-            Console.WriteLine("  --ldapport <port>            LDAP port to listen on (Default: 389).");
-            Console.WriteLine("  --gcport <port>              GC port to listen on (Default: 3268).");
-            Console.WriteLine("  --adwsdcport <port>          Target ADWS DC port (Default: 9389).");
-            Console.WriteLine("  --hostip <ip>                The IP used for the DNS responses (Default: IPv4 local IP).");
-            Console.WriteLine("  --listenip <ip>              The IP to listen on for LDAP/GC requests (Default: 0.0.0.0).");
-            Console.WriteLine("  --mode <Windows|Username>    ADWS Endpoint Mode (Default: Windows).");
-            Console.WriteLine("  --skipdns <true|false>       Skip starting the DNS listener.");
-            Console.WriteLine("  --skiprootdse <true|false>   Skip starting the DNS listener.");
-            Console.WriteLine("  --username <user>            Username for ADWS authentication.");
-            Console.WriteLine("  --password <pass>            Password for ADWS authentication.");
-            Console.WriteLine("  --domain <domain>            Domain for ADWS authentication.");
-            Console.WriteLine("  --help                       Show this help message.");
+            Console.WriteLine("  --domaincontroller <fqdn>    (Required) The DC to proxy to");
+            Console.WriteLine("  --globalcatalog <fqdn>       The GC to proxy to");
+            Console.WriteLine("  --ldapport <port>            LDAP port to listen on (Default: 389)");
+            Console.WriteLine("  --gcport <port>              GC port to listen on (Default: 3268)");
+            Console.WriteLine("  --adwsdcport <port>          Target ADWS DC port (Default: 9389)");
+            Console.WriteLine("  --hostip <ip>                The IP used for the DNS responses (Default: IPv4 local IP)");
+            Console.WriteLine("  --listenip <ip>              The IP to listen on for LDAP/GC requests (Default: 0.0.0.0)");
+            Console.WriteLine("  --mode <Windows|Username>    ADWS Endpoint Mode (Default: Windows)");
+            Console.WriteLine("  --skipdns <true|false>       Skip starting the DNS listener");
+            Console.WriteLine("  --skiprootdse <true|false>   Skip starting the DNS listener");
+            Console.WriteLine("  --username <user>            Username for ADWS authentication");
+            Console.WriteLine("  --password <pass>            Password for ADWS authentication");
+            Console.WriteLine("  --domain <domain>            Domain for ADWS authentication");
+            Console.WriteLine("  --help                       Show this help message");
             Console.WriteLine();
         }
     }

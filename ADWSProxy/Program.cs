@@ -62,7 +62,7 @@ namespace ADWSProxy
 
             if (string.IsNullOrWhiteSpace(options.DomainController))
             {
-                logger.Error("Error: --domaincontroller is required.");
+                logger.Error("Error: --domaincontroller is required");
                 CommandLineOptions.ShowHelp();
                 return;
             }
@@ -80,7 +80,7 @@ namespace ADWSProxy
 
             LoggerConfig.ConfigureLogger(options.ConsoleLogLevel, options.LogDirectory);
 
-            logger.Info("Starting ADWSproxy.");
+            logger.Info("Starting ADWSproxy");
 
             var exitCode = 0;
             Listener? LDAPListener = null;
@@ -200,7 +200,7 @@ namespace ADWSProxy
                 DnsServer server = new(10, 10);
                 server.QueryReceived += resolver.OnQueryReceived;
                 server.Start();
-                logger.Info("DNS Server is live on UDP and TCP port 53.");
+                logger.Info("DNS Server is live on UDP and TCP port 53");
                 return true;
             }
             catch (Exception ex)

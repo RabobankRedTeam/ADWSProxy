@@ -139,3 +139,8 @@ python3 -m bloodhound -u x -p x -d [...] --auth ntlm -ns 127.0.0.1 -c DCOnly
 ## Blog Post & Background
 
 Detailed research into ADWS exploitation and the architecture of this tool is available on the [Rabobank TechBlog](https://rabobank.jobs/en/techblog/adws-an-unconventional-path-into-active-directory-luc-kolen/).
+
+## Test client
+
+A test client that can run queries via the following methods; ADWS, ADWS-Global Catalog, LDAP(S), and LDAP(S)-Global Catalogis available. A sample [tests.json](/TestClient/tests.json) file is included with the repository.
+Note that the test client has only been tested with Server 2022 and may not be fully compatible with Server 2025.

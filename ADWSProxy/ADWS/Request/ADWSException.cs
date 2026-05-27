@@ -12,7 +12,7 @@ namespace ADWSProxy.ADWS.Request
             $"ADWS Encountered '{ErrorType}'. Details: " +
             (Errors != null && Errors.Count > 0
                 ? string.Join("; ", Errors.Select(e => $"[{e.Key}: {e.Value}]"))
-                : "No detailed errors provided.");
+                : "No detailed errors provided");
         public string? ErrorType { get; private set; } = ErrorType;
         public Dictionary<string, string> Errors { get; private set; } = Errors;
 
@@ -39,7 +39,7 @@ namespace ADWSProxy.ADWS.Request
 
                     while (reader.Read())
                     {
-                        if (reader.NodeType == XmlNodeType.Element && reader.LocalName != "value")
+                        if (reader.NodeType == XmlNodeType.Element && !reader.LocalName.Equals("value", StringComparison.OrdinalIgnoreCase))
                         {
                             var elementName = reader.LocalName;
                             while (reader.Read())
@@ -49,7 +49,7 @@ namespace ADWSProxy.ADWS.Request
                                     var nodeValue = reader.Value;
                                     errors.Add(elementName, nodeValue);
                                 }
-                                if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName != "value")
+                                if (reader.NodeType == XmlNodeType.EndElement && !reader.LocalName.Equals("value", StringComparison.OrdinalIgnoreCase))
                                 {
                                     break;
                                 }

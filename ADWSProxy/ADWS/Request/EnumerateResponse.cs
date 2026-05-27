@@ -15,13 +15,13 @@ namespace ADWSProxy.ADWS.Request
             {
                 if (reader.NodeType == XmlNodeType.Element)
                 {
-                    if (reader.LocalName == "Expires")
+                    if (reader.LocalName.Equals("Expires", StringComparison.OrdinalIgnoreCase))
                     {
                         var expirationString = reader.ReadElementContentAsString();
 
                         Expiration = XmlConvert.ToDateTime(expirationString, XmlDateTimeSerializationMode.Utc);
                     }
-                    if (reader.LocalName == "EnumerationContext")
+                    if (reader.LocalName.Equals("EnumerationContext", StringComparison.OrdinalIgnoreCase))
                     {
                         EnumerateContext = reader.ReadElementContentAsString();
                     }

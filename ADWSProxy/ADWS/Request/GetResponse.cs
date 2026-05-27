@@ -11,7 +11,7 @@ namespace ADWSProxy.ADWS.Request
         {
             while (reader.Read())
             {
-                if (reader.NodeType == XmlNodeType.Element && reader.LocalName != "value")
+                if (reader.NodeType == XmlNodeType.Element && !reader.LocalName.Equals("value", StringComparison.OrdinalIgnoreCase))
                 {
                     var elementName = reader.LocalName;
                     while (reader.Read())
@@ -30,7 +30,7 @@ namespace ADWSProxy.ADWS.Request
                             }
 #pragma warning restore CA1854 // Prefer the 'IDictionary.TryGetValue(TKey, out TValue)' method
                         }
-                        if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName != "value")
+                        if (reader.NodeType == XmlNodeType.EndElement && !reader.LocalName.Equals("value", StringComparison.OrdinalIgnoreCase))
                         {
                             break;
                         }
