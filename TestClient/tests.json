@@ -1,5 +1,5 @@
 {
-  "Server": "dc01.kolen.xyz",
+  "Server": "dc01",
   "Queries": [
     {
       "Name": "RootDSE Discovery",
