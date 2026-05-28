@@ -11,7 +11,7 @@ namespace TestClient
 
         private readonly LdapDirectoryIdentifier ldapDirectoryIdentifier = new(server, port);
 
-        internal int ExecuteLdap(string baseDn, string filter, string scope, List<string> attributes)
+        internal List<ResultHolder> ExecuteLdap(string baseDn, string filter, string scope, List<string> attributes)
         {
             // Null credentials + AuthType.Negotiate uses current implicit Windows Session Token
             // Linux clients should use AuthType.Basic with explicit credentials, as Negotiate is not widely supported outside of Windows environments
@@ -85,6 +85,7 @@ namespace TestClient
             request.Controls.Add(sdControl);
             var response = (SearchResponse)connection.SendRequest(request);
 
+            List<ResultHolder> results = [];
             try
             {
                 var jsonOutputHasBase64Content = false;
@@ -127,6 +128,12 @@ namespace TestClient
                     )
                 }).ToList();
 
+                results = [.. serializableResults.Select(r => new ResultHolder
+                {
+                    DistinguishedName = r.DistinguishedName,
+                    Attributes = r.Attributes
+                })];
+
                 if (jsonOutputHasBase64Content)
                 {
                     log.Debug("Some attributes were detected as binary data and have been Base64 encoded in the JSON output");
@@ -139,7 +146,7 @@ namespace TestClient
                 log.Error("Error occurred while serializing LDAP results", ex);
             }
 
-            return response.Entries.Count;
+            return results;
         }
     }
 }

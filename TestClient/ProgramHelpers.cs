@@ -18,14 +18,17 @@ namespace TestClient
 
             foreach (var test in config.Queries)
             {
+                var startTime = DateTime.Now;
                 log.Info($"Loaded Test Case: {test.Name}");
                 log.Info($"  Target OU: {test.TargetOU}");
                 log.Info($"  Filter: {test.Filter}");
                 log.Info($"  Scope: {test.Scope}");
                 log.Info($"  Attributes: {string.Join(", ", test.Attributes)}");
                 log.Info($"  Engines: {string.Join(", ", test.Engines)}");
+                log.Info($"  Starttime: {startTime:yyyy-MM-ddTHH:mm:ss}");
+                log.Info("-----------------------------");
 
-                int? ldapResults = null, ldapsResults = null, ldapGcResults = null, ldapsGcResults = null, adwsResults = null, adwsGcResults = null;
+                List<ResultHolder>? ldapResults = null, ldapsResults = null, ldapGcResults = null, ldapsGcResults = null, adwsResults = null, adwsGcResults = null;
                 long? ldapTime = null, ldapsTime = null, ldapGcTime = null, ldapsGcTime = null, adwsTime = null, adwsGcTime = null;
 
                 var adwsHelper = new ADWSHelpers(config.Server, 389, credential);
@@ -92,18 +95,50 @@ namespace TestClient
                     }
                 }
 
-                if (ldapResults.HasValue)
+                if (ldapResults != null)
                     log.Info($"  Results: {ldapResults} entries returned for LDAP in {ldapTime} ms");
-                if (ldapsResults.HasValue)
+                if (ldapsResults != null)
                     log.Info($"  Results: {ldapsResults} entries returned for LDAPS in {ldapsTime} ms");
-                if (ldapGcResults.HasValue)
+                if (ldapGcResults != null)
                     log.Info($"  Results: {ldapGcResults} entries returned for LDAP-GC in {ldapGcTime} ms");
-                if (ldapsGcResults.HasValue)
+                if (ldapsGcResults != null)
                     log.Info($"  Results: {ldapsGcResults} entries returned for LDAPS-GC in {ldapsGcTime} ms");
-                if (adwsResults.HasValue)
+                if (adwsResults != null)
                     log.Info($"  Results: {adwsResults} entries returned for ADWS in {adwsTime} ms");
-                if (adwsGcResults.HasValue)
+                if (adwsGcResults != null)
                     log.Info($"  Results: {adwsGcResults} entries returned for ADWS-GC in {adwsGcTime} ms");
+
+                try
+                {
+                    // Create an object to hold the results for this test case and write it to a JSON file
+                    var allResults = new
+                    {
+                        TestName = test.Name,
+                        startTime,
+                        test.TargetOU,
+                        test.Filter,
+                        test.Scope,
+                        test.Attributes,
+                        test.Engines,
+                        Results = new
+                        {
+                            LDAP = ldapResults != null ? new { Values = ldapResults, TimeMs = ldapTime } : null,
+                            LDAPS = ldapsResults != null ? new { Values = ldapsResults, TimeMs = ldapsTime } : null,
+                            LDAP_GC = ldapGcResults != null ? new { Values = ldapGcResults, TimeMs = ldapGcTime } : null,
+                            LDAPS_GC = ldapsGcResults != null ? new { Values = ldapsGcResults, TimeMs = ldapsGcTime } : null,
+                            ADWS = adwsResults != null ? new { Values = adwsResults, TimeMs = adwsTime } : null,
+                            ADWS_GC = adwsGcResults != null ? new { Values = adwsGcResults, TimeMs = adwsGcTime } : null
+                        }
+                    };
+                    var resultsJson = System.Text.Json.JsonSerializer.Serialize(allResults, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    var fileName = $"{startTime:yyyyMMddhhmmss}_{test.Name}_results.json";
+                    File.WriteAllText(fileName, resultsJson);
+                    log.Info($"  Results written to file: {fileName}");
+                }
+                catch (Exception ex)
+                {
+                    log.Error($"  Error writing results for test '{test.Name}' to file", ex);
+                }
 
                 log.Info($"Finished test '{test.Name}'");
                 log.Info("-----------------------------");
