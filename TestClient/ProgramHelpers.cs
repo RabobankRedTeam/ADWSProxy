@@ -96,17 +96,17 @@ namespace TestClient
                 }
 
                 if (ldapResults != null)
-                    log.Info($"  Results: {ldapResults} entries returned for LDAP in {ldapTime} ms");
+                    log.Info($"  Results: {ldapResults.Count} entries returned for LDAP in {ldapTime} ms");
                 if (ldapsResults != null)
-                    log.Info($"  Results: {ldapsResults} entries returned for LDAPS in {ldapsTime} ms");
+                    log.Info($"  Results: {ldapsResults.Count} entries returned for LDAPS in {ldapsTime} ms");
                 if (ldapGcResults != null)
-                    log.Info($"  Results: {ldapGcResults} entries returned for LDAP-GC in {ldapGcTime} ms");
+                    log.Info($"  Results: {ldapGcResults.Count} entries returned for LDAP-GC in {ldapGcTime} ms");
                 if (ldapsGcResults != null)
-                    log.Info($"  Results: {ldapsGcResults} entries returned for LDAPS-GC in {ldapsGcTime} ms");
+                    log.Info($"  Results: {ldapsGcResults.Count} entries returned for LDAPS-GC in {ldapsGcTime} ms");
                 if (adwsResults != null)
-                    log.Info($"  Results: {adwsResults} entries returned for ADWS in {adwsTime} ms");
+                    log.Info($"  Results: {adwsResults.Count} entries returned for ADWS in {adwsTime} ms");
                 if (adwsGcResults != null)
-                    log.Info($"  Results: {adwsGcResults} entries returned for ADWS-GC in {adwsGcTime} ms");
+                    log.Info($"  Results: {adwsGcResults.Count} entries returned for ADWS-GC in {adwsGcTime} ms");
 
                 try
                 {
