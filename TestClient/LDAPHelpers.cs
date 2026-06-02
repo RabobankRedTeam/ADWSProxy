@@ -83,13 +83,30 @@ namespace TestClient
             SearchRequest request = new(baseDn, filter, ldapScope, attributes?.ToArray());
             var sdControl = new SecurityDescriptorFlagControl(SecurityMasks.Dacl | SecurityMasks.Owner | SecurityMasks.Group);
             request.Controls.Add(sdControl);
-            var response = (SearchResponse)connection.SendRequest(request);
+
+            int pageSize = 500;
+            PageResultRequestControl pageRequestControl = new(pageSize);
+            request.Controls.Add(pageRequestControl);
+
+            List<SearchResultEntry> allResults = [];
+            while (true)
+            {
+                var response = (SearchResponse)connection.SendRequest(request);
+                allResults.AddRange(response.Entries.Cast<SearchResultEntry>());
+                var pageResponseControl = response.Controls.OfType<PageResultResponseControl>().FirstOrDefault();
+                if (pageResponseControl == null || pageResponseControl.Cookie.Length == 0)
+                {
+                    break;
+                }
+                pageRequestControl.Cookie = pageResponseControl.Cookie;
+            }
+
 
             List<ResultHolder> results = [];
             try
             {
                 var jsonOutputHasBase64Content = false;
-                var serializableResults = response.Entries.Cast<SearchResultEntry>().Select(e => new
+                var serializableResults = allResults.Select(e => new
                 {
                     e.DistinguishedName,
                     Attributes = e.Attributes.AttributeNames.Cast<string>().ToDictionary(
