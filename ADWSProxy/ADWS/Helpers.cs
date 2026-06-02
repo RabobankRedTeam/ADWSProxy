@@ -20,18 +20,16 @@ namespace ADWSProxy.ADWS
 
         public static string GetMessageString(MessageBuffer messageBuffer)
         {
-            XmlWriterSettings settings = new XmlWriterSettings()
+            XmlWriterSettings settings = new()
             {
                 Indent = true,
                 NewLineOnAttributes = false
             };
-            StringBuilder output = new StringBuilder();
+            StringBuilder output = new();
             using (XmlWriter writer = XmlWriter.Create(output, settings))
             {
-                using (XmlDictionaryWriter dictionaryWriter = XmlDictionaryWriter.CreateDictionaryWriter(writer))
-                {
-                    messageBuffer.CreateMessage().WriteMessage(dictionaryWriter);
-                }
+                using XmlDictionaryWriter dictionaryWriter = XmlDictionaryWriter.CreateDictionaryWriter(writer);
+                messageBuffer.CreateMessage().WriteMessage(dictionaryWriter);
             }
 
             return output.ToString();

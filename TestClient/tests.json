@@ -1,0 +1,37 @@
+{
+  "Server": "dc01",
+  "Queries": [
+    {
+      "Name": "RootDSE Discovery",
+      "TargetOU": "",
+      "Filter": "(objectClass=*)",
+      "Scope": "Base",
+      "Attributes": [ "defaultNamingContext", "dnsHostName", "rootDomainNamingContext" ],
+      "Engines": [ "ADWS", "LDAP", "LDAPS" ]
+    },
+    {
+      "Name": "Self-Context check",
+      "TargetOU": "{{DOMAIN_DN}}",
+      "Filter": "(sAMAccountName={{USERNAME}})",
+      "Scope": "Subtree",
+      "Attributes": [ "distinguishedName", "cn", "memberOf", "ntSecurityDescriptor" ],
+      "Engines": [ "ADWS", "ADWS-GC", "LDAP", "LDAPS", "LDAP-GC", "LDAPS-GC" ]
+    },
+    {
+      "Name": "Organizational layout",
+      "TargetOU": "{{DOMAIN_DN}}",
+      "Filter": "(objectClass=organizationalUnit)",
+      "Scope": "Subtree",
+      "Attributes": [ "distinguishedName", "name", "gPLink", "description" ],
+      "Engines": [ "ADWS", "LDAPS" ]
+    },
+    {
+      "Name": "Admin group case-insensitive inventory",
+      "TargetOU": "{{DOMAIN_DN}}",
+      "Filter": "(&(objectCategory=group)(sAMAccountName=*admin*))",
+      "Scope": "Subtree",
+      "Attributes": [ "distinguishedName", "cn", "sAMAccountName", "description" ],
+      "Engines": [ "ADWS", "ADWS-GC", "LDAPS", "LDAPS-GC" ]
+    }
+  ]
+}

@@ -26,7 +26,7 @@ namespace ADWSProxy.ADWS.Request
         public override MessageProperties Properties => MessageProperties;
         public override MessageVersion Version => MessageVersion.Soap12WSAddressing10;
         private MessageHeaders MessageHeaders { get; }
-        private MessageProperties MessageProperties { get; } = new MessageProperties();
+        private MessageProperties MessageProperties { get; } = [];
 
         protected abstract override void OnWriteBodyContents(XmlDictionaryWriter writer);
 

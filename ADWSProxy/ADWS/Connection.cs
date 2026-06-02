@@ -1,55 +1,56 @@
 ﻿using ADWSProxy.ADWS.Request;
 using ADWSProxy.LDAP;
 using Flexinets.Ldap.Core;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+using log4net;
 using System.Net;
-using System.Reflection;
+using System.Security.Authentication.ExtendedProtection;
 using System.ServiceModel;
+using System.ServiceModel.Channels;
 
 namespace ADWSProxy.ADWS
 {
-    internal class Connection
+    public class Connection
     {
-        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly ILog logger = LogHelper.GetLogger(typeof(Connection));
 
-        private NetTcpBinding _binding = null;
+        private CustomBinding? _binding = null;
 
-        private ResourceClient _resource = null;
+        private Resource? _resource = null;
 
-        private SearchClient _search = null;
+        private Search? _search = null;
 
-        public Connection(string server, int port, string instance, bool useWindowsAuth, NetworkCredential credential = null)
+        public Connection(string server, int port, string instance, AdwsEndpoint mode, NetworkCredential? credential = null)
         {
             logger.Info($"Constructing new {GetType().FullName}");
+
+            ServicePointManager.ServerCertificateValidationCallback = (s, c, ch, e) => true;
 
             Server = server;
             Instance = instance;
             Port = port;
             Credential = credential;
-            UseWindowsAuth = useWindowsAuth;
+            Mode = mode;
         }
 
-        public bool UseWindowsAuth { get; }
+        public AdwsEndpoint Mode { get; }
 
         private string Auth
         {
             get
             {
-                return UseWindowsAuth ? "Windows" : "UserName";
+                return Mode == AdwsEndpoint.Windows ? "Windows" : "UserName";
             }
         }
 
-        private NetTcpBinding Binding
+        private CustomBinding Binding
         {
             get
             {
                 if (_binding == null)
                 {
-                    logger.Debug($"Constructing new {typeof(NetTcpBinding).FullName}.");
+                    logger.Debug($"Constructing new {typeof(NetTcpBinding).FullName}");
 
-                    _binding = new NetTcpBinding
+                    var binding = new NetTcpBinding
                     {
                         MaxReceivedMessageSize = Helpers.BufferSize,
                         CloseTimeout = new TimeSpan(0, 10, 0),
@@ -58,104 +59,154 @@ namespace ADWSProxy.ADWS
                         SendTimeout = new TimeSpan(0, 10, 0)
                     };
 
-                    _binding.ReaderQuotas.MaxDepth = 10;
-                    _binding.ReaderQuotas.MaxStringContentLength = 32768;
-                    _binding.ReaderQuotas.MaxArrayLength = 16384;
+                    binding.ReaderQuotas.MaxDepth = 10;
+                    binding.ReaderQuotas.MaxStringContentLength = 32768;
+                    binding.ReaderQuotas.MaxArrayLength = 16384;
 
-                    _binding.Security.Transport.ProtectionLevel = System.Net.Security.ProtectionLevel.EncryptAndSign;
-                    _binding.Security.Message.ClientCredentialType = UseWindowsAuth ? MessageCredentialType.Windows : MessageCredentialType.UserName;
-                    _binding.Security.Mode = UseWindowsAuth ? SecurityMode.Transport : SecurityMode.TransportWithMessageCredential;
+                    if (Mode == AdwsEndpoint.Windows)
+                    {
+                        binding.Security.Mode = SecurityMode.Transport;
+                        binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.Windows;
+                        binding.Security.Transport.ProtectionLevel = System.Net.Security.ProtectionLevel.EncryptAndSign;
+                        binding.Security.Message.ClientCredentialType = MessageCredentialType.None;
+                    }
+                    else
+                    {
+                        binding.Security.Mode = SecurityMode.TransportWithMessageCredential;
+                        binding.Security.Transport.ClientCredentialType = TcpClientCredentialType.None;
+                        binding.Security.Message.ClientCredentialType = MessageCredentialType.UserName;
+                    }
 
-                    logger.Debug($"Using EncryptAndSing on Transport {_binding.Security.Transport.ProtectionLevel == System.Net.Security.ProtectionLevel.EncryptAndSign}");
+                    logger.Debug($"Using binding.Security.Mode: {binding.Security.Mode}");
+                    logger.Debug($"Using binding.Security.Transport.ClientCredentialType: {binding.Security.Transport.ClientCredentialType}");
+                    logger.Debug($"binding.Security.Transport.ProtectionLevel: {binding.Security.Transport.ProtectionLevel}");
+                    logger.Debug($"binding.Security.Message.ClientCredentialType: {binding.Security.Message.ClientCredentialType}");
 
-                    logger.Debug($"Using MessageCrentialType.Windows {_binding.Security.Message.ClientCredentialType == MessageCredentialType.Windows}");
+                    _binding = new CustomBinding(binding);
+                    var transportElement = _binding.Elements.Find<TcpTransportBindingElement>();
+                    if (transportElement != null)
+                    {
+                        // Setting this value to Always is only supported on Windows at this time.
+                        if (OperatingSystem.IsWindows())
+                        {
+                            transportElement.ExtendedProtectionPolicy = new ExtendedProtectionPolicy(PolicyEnforcement.Always);
+                        }
+                        else
+                        {
+                            transportElement.ExtendedProtectionPolicy = new ExtendedProtectionPolicy(PolicyEnforcement.WhenSupported, ProtectionScenario.TransportSelected, new ServiceNameCollection(new[]
+                            {
+                                $"identity/{Server}",
+                                $"identity/{Server.Split('.')[0]}",
+                                $"host/{Server}",
+                                $"ldap/{Server}",
+                                $"ldap/{Server}/{Server[(Server.IndexOf('.') + 1)..]}",
+                                $"identity/{Server}:9389"
+                            }));
+                        }
+                        logger.Debug($"transportElement.ExtendedProtectionPolicy: {transportElement.ExtendedProtectionPolicy}");
+                    }
+                    var securityElement = _binding.Elements.Find<SecurityBindingElement>();
+                    if (securityElement != null)
+                    {
+                        securityElement.IncludeTimestamp = true;
+                        logger.Debug($"securityElement.IncludeTimestamp: {securityElement.IncludeTimestamp}");
+
+                    }
                 }
+
                 return _binding;
             }
         }
 
-        private NetworkCredential Credential { get; }
+        private NetworkCredential? Credential { get; }
         private string Instance { get; }
         private int Port { get; }
 
-        private ResourceClient ResourceClient
+        private EndpointIdentity? Identity
         {
             get
             {
-                if (_resource == null || _resource.State == CommunicationState.Closed)
+                return Mode switch
                 {
-                    logger.Debug($"Constructing new {typeof(ResourceClient).FullName}");
+                    AdwsEndpoint.Windows => new SpnEndpointIdentity($"host/{Server.ToLower()}"),
+                    AdwsEndpoint.Username => new DnsEndpointIdentity(Server),
+                    _ => null
+                };
+            }
+        }
 
-                    UriBuilder uriBuilder = new UriBuilder
-                    {
-                        Scheme = "net.tcp",
-                        Host = Server,
-                        Port = Port,
+        private T CreateChannel<T>(string endpointName, Binding binding, NetworkCredential? credential, AdwsEndpoint mode) where T : class
+        {
+            logger.Debug($"Constructing new {typeof(T).FullName} via {typeof(ChannelFactory<T>)}");
 
-                        Path = $"ActiveDirectoryWebServices/{Auth}/Resource"
-                    };
+            var endpoint = new EndpointAddress(CreateUri(endpointName), Identity, []);
+            var factory = new ChannelFactory<T>(binding, endpoint);
 
-                    _resource = new ResourceClient(Binding, new EndpointAddress(uriBuilder.Uri));
-                    if (Credential != null)
-                    {
-                        if (UseWindowsAuth)
-                        {
-                            _resource.ClientCredentials.Windows.ClientCredential.UserName = Credential.UserName;
-                            _resource.ClientCredentials.Windows.ClientCredential.Password = Credential.Password;
-                            _resource.ClientCredentials.Windows.ClientCredential.Domain = Credential.Domain;
-                        }
-                        else
-                        {
-                            _resource.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
-                            _resource.ClientCredentials.UserName.Password = Credential.Password;
-                            _resource.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
-                        }
-                    }
-                    _resource.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+            if (credential != null)
+            {
+                switch (mode)
+                {
+                    case AdwsEndpoint.Windows:
+                        factory.Credentials.Windows.ClientCredential = credential;
+                        break;
+                    case AdwsEndpoint.Username:
+                        factory.Credentials.UserName.UserName = $"{credential.UserName}@{credential.Domain}";
+                        factory.Credentials.UserName.Password = credential.Password;
+                        factory.Credentials.ServiceCertificate.Authentication.CertificateValidationMode =
+                            System.ServiceModel.Security.X509CertificateValidationMode.None;
+                        break;
+                }
+            }
+            factory.Credentials.Windows.AllowedImpersonationLevel =
+                System.Security.Principal.TokenImpersonationLevel.Impersonation;
+
+            // Create the channel
+            var channel = factory.CreateChannel();
+
+            // Explicitly open the channel
+            if (channel is ICommunicationObject commObj)
+            {
+                commObj.Open();
+            }
+
+            return channel;
+        }
+
+        private Resource ResourceClient
+        {
+            get
+            {
+                if (_resource == null || ((IClientChannel)_resource).State == CommunicationState.Faulted || ((IClientChannel)_resource).State == CommunicationState.Closed)
+                {
+                    _resource = CreateChannel<Resource>("Resource", Binding, Credential, Mode);
                 }
 
                 return _resource;
             }
         }
 
-        private SearchClient SearchClient
+        private Search SearchClient
         {
             get
             {
-                if (_search == null || _search.State == CommunicationState.Closed)
+                if (_search == null || ((IClientChannel)_search).State == CommunicationState.Faulted || ((IClientChannel)_search).State == CommunicationState.Closed)
                 {
-                    logger.Debug($"Constructing new {typeof(SearchClient).FullName}");
-
-                    UriBuilder uriBuilder = new UriBuilder
-                    {
-                        Scheme = "net.tcp",
-                        Host = Server,
-                        Port = Port,
-
-                        Path = $"ActiveDirectoryWebServices/{Auth}/Enumeration"
-                    };
-
-                    _search = new SearchClient(Binding, new EndpointAddress(uriBuilder.Uri));
-
-                    if (Credential != null)
-                    {
-                        if (UseWindowsAuth)
-                        {
-                            _search.ClientCredentials.Windows.ClientCredential.UserName = Credential.UserName;
-                            _search.ClientCredentials.Windows.ClientCredential.Password = Credential.Password;
-                            _search.ClientCredentials.Windows.ClientCredential.Domain = Credential.Domain;
-                        }
-                        else
-                        {
-                            _search.ClientCredentials.UserName.UserName = $"{Credential.UserName}@{Credential.Domain}";
-                            _search.ClientCredentials.UserName.Password = Credential.Password;
-                            _search.ClientCredentials.ServiceCertificate.Authentication.CertificateValidationMode = System.ServiceModel.Security.X509CertificateValidationMode.None;
-                        }
-                    }
-                    _search.ClientCredentials.Windows.AllowedImpersonationLevel = System.Security.Principal.TokenImpersonationLevel.Impersonation;
+                    _search = CreateChannel<Search>("Enumeration", Binding, Credential, Mode);
                 }
                 return _search;
             }
+        }
+
+        private Uri CreateUri(string endpoint)
+        {
+            return new UriBuilder()
+            {
+                Scheme = "net.tcp",
+                Host = Server,
+                Port = Port,
+
+                Path = $"ActiveDirectoryWebServices/{Auth}/{endpoint}"
+            }.Uri;
         }
 
         private string Server { get; }
@@ -182,7 +233,7 @@ namespace ADWSProxy.ADWS
             foreach (var item in parsedResponse.Items)
             {
                 // These fields return the guid 11111111-1111-1111-1111-111111111111 which is not present in a direct LDAP request to get the RootDSE
-                if (item.Key.Equals("container-hierarchy-parent", StringComparison.InvariantCultureIgnoreCase) || item.Key.Equals("objectReferenceProperty", StringComparison.InvariantCultureIgnoreCase))
+                if (item.Key.Equals("container-hierarchy-parent", StringComparison.OrdinalIgnoreCase) || item.Key.Equals("objectReferenceProperty", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -223,14 +274,21 @@ namespace ADWSProxy.ADWS
             return result;
         }
 
-        internal void Enumerate(string dn, string filter, List<string> fields, string scope, Action<(string, List<DataHolder>)> callback)
+        public void Enumerate(string dn, string filter, List<string> fields, string scope, Action<(string, List<DataHolder>)> callback)
         {
-            if (!fields.Any(field => field.Equals("distinguishedname", StringComparison.CurrentCultureIgnoreCase)))
+            if (string.IsNullOrEmpty(dn) && filter.Equals("(objectclass=*)", StringComparison.OrdinalIgnoreCase) && scope.Equals("base", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.Debug("Performing optimized RootDSE retrieval via Search.Enumerate");
+                callback(("", GetRootDSE()));
+                return;
+            }
+
+            if (!fields.Any(field => field.Equals("distinguishedname", StringComparison.OrdinalIgnoreCase)))
             {
                 fields.Add("distinguishedname");
             }
 
-            string enumerateContext = null;
+            string? enumerateContext = null;
             DateTime? enumerateContextExpires = null;
             int pageNumber = 0;
             try
@@ -259,7 +317,7 @@ namespace ADWSProxy.ADWS
                     {
                         logger.Info($"Renewing expiration for {enumerateContext}");
 
-                        var renewRequestBuffer = new RenewRequest(Instance, enumerateContext, DateTime.Now.AddMinutes(25)).CreateBufferedCopy();
+                        var renewRequestBuffer = new RenewRequest(Instance, enumerateContext!, DateTime.Now.AddMinutes(25)).CreateBufferedCopy();
                         renewRequestBuffer.WriteMessageToDebug(logger);
 
                         var renewResponse = SearchClient.Renew(renewRequestBuffer.CreateMessage());
@@ -272,15 +330,15 @@ namespace ADWSProxy.ADWS
                         }
                         var parsedRenewResponse = new RenewResponse(renewResponseBuffer.CreateMessage());
 
-                        string newEnumerateContext = parsedRenewResponse.EnumerateContext;
+                        string newEnumerateContext = parsedRenewResponse.EnumerateContext!;
                         DateTime newEnumerateContextExpires = parsedRenewResponse.Expiration;
 
-                        logger.Debug($"Completed Search.Renew, old context: {enumerateContext} would expire at {enumerateContextExpires?.ToShortDateString()} and new context: {newEnumerateContext} which expires at {newEnumerateContextExpires.ToShortDateString()}");
+                        logger.Debug($"Completed Search.Renew, old context: {enumerateContext} would expire at {enumerateContextExpires?.ToShortDateString()} and new context: {newEnumerateContext} which expires at {newEnumerateContextExpires:d}");
 
                         enumerateContext = newEnumerateContext;
                         enumerateContextExpires = newEnumerateContextExpires;
                     }
-                    var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext).CreateBufferedCopy();
+                    var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext!).CreateBufferedCopy();
                     pullRequest.WriteMessageToDebug(logger);
 
                     var pullResponse = SearchClient.Pull(pullRequest.CreateMessage());

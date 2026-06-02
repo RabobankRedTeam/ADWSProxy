@@ -1,76 +1,146 @@
-# ADWSProxy
+# ADWSProxy (.NET 8.0)
+
+A high-performance, cross-platform Active Directory Web Services (ADWS) proxy built on **.NET 8.0 LTS**. This tool bridges the gap for LDAP-based tools in environments where traditional LDAP ports (389/636) are blocked, but ADWS (9389) remains open.
+
+---
+
+## Key Features
+* **Cross-Platform:** Runs on Windows, Linux, and MacOS.
+* **Docker Ready:** Optimized for lightweight Linux containers (Alpine/Debian).
+* **Native SID Parsing:** Includes a custom binary-to-string SID parser, eliminating dependencies on Windows-only system libraries.
+* **Modern Tooling:** Built using .NET 8 (LTS) SDK and `dotnet-svcutil`.
+
+---
 
 ## Usage
 
-```
+### Command Line Arguments
+```text
   --adwsdcport             (Default: 9389) The ADWS port to proxy to on the domain controller
   --adwsgcport             (Default: 9389) The ADWS port to proxy to on the global catalog
   --consoleloglevel        (Default: INFO) Set the log level for the console output
-  --dnsport                (Default: 53) The DNS port to proxy from
-  -D, --domain             The domain to authenticate to ADWS
-  --domaincontroller       Required. The domain controller to proxy to
-  --exitondnsstarterror    (Default: true) Exit the application if the DNS port is already in use
-  --gcinstance             (Default: ldap:3268) The GC instance within ADWS
+  --domaincontroller       Required. The domain controller to proxy to for NTDS
+  --exitondnsstarterror    (Default: true) Exit if the DNS port is already in use
   --gcport                 (Default: 3268) The GC port to proxy from
-  --globalcatalog          The global catalog to proxy to
-  --ldapinstance           (Default: ldap:389) The LDAP instance within ADWS
+  --globalcatalog          (Default: only DC/NTDS is used) The global catalog to proxy to
+  --hostip                 (Default: system IPv4) Override the IP in the DNS respones
   --ldapport               (Default: 389) The LDAP port to proxy from
-  --logdirectory           (Default: .) The log directory to output runtime logs. Defaults to the current working directory.
-  -p, --password           The password to authenticate to ADWS
+  --listenip               (Default: 0.0.0.0) The IP to listen on for LDAP/GC requests
+  --logdirectory           (Default: .) The log directory for runtime logs
+  -m, --mode               (Default: Windows) Set the ADWS endpoint mode: Windows or Username
+  --onlyusegcbackend       (Default: false) Force ADWS to use GC instance (ldap:3268) for all backend communication
+  --skipdns                (Default: false) Skip starting the DNS listener
+  --skiprootdse            (Default: false) Skip querying the RootDSE during startup
+
+These credentials can either be ommited or all need to be filled in. If empty then the current Windows domain session will be used.
   -u, --username           The username to authenticate to ADWS
-  --usewindowsauth         (Default: true) Use Windows Authentication or Username/Password with TLS
+  -p, --password           The password to authenticate to ADWS
+  -D, --domain             The domain to authenticate to ADWS
   --help                   Display this help screen.
   --version                Display version information.
+  ```
+
+ ### Starting the Proxy
+
+The proxy requires valid credentials if executed outside of a domain-joined Windows session (e.g., when running on Linux or in Docker).
+
+#### Server 2025
+
+Windows Server 2025 has removed the `/UserName` endpoints so only `--mode Windows` is supported.
+
+This mode can be used without explicitly noting credentials by using the current Windows session:
+
+```powershell
+.\ADWSProxy.exe --domaincontroller "dc01.[...]"
 ```
 
-The Proxy can be started with the following command. Make sure that if either of `--domain`, `--username` or `--password` is set that all three values are set and corrent. These three values can be ommited if the Proxy is executed within the context of a domain joined user.
+It's also possible to explicitly set credentials to use, for instance when running from a non domain joined machine or a machine that is joined to a different domain.
 
-```
-PS> .\ADWSProxy.exe --domain [...] --username [...] --password [...] --domaincontroller dc01.[...] --globalcatalog dc01.[...]
-[ INFO ] Starting LDAP2ADWS proxy.
-[ INFO ] Constructing new ADWSProxy.LDAP.Listener
-[ INFO ] Constructing new ADWSProxy.ADWS.Connection
-[ INFO ] Succesfully started the LDAPListener on 0.0.0.0:389
-[ INFO ] Constructing new ADWSProxy.LDAP.Listener
-[ INFO ] Constructing new ADWSProxy.ADWS.Connection
-[ INFO ] Succesfully started the GCListener on 0.0.0.0:3268
-[ INFO ] Constructing new ADWSProxy.DNS.Resolver
-[ INFO ] Succesfully started the DNSListener on 0.0.0.0:53
-[ INFO ] Succesfully got RootDSE
-Pressing Enter will close the application
+```powershell
+.\ADWSProxy.exe -u "user" -p "password" --domain "[...]" --domaincontroller "dc01.[...]"
 ```
 
-[Bloodhound-Python](https://github.com/dirkjanm/BloodHound.py) can be run by setting the `-ns` argument to the DNS resolver of the Proxy. This proxy will return the machine hosting the Proxy as the Domain Controller and the Global Catalog for the domain.  
-The values for `-u` and `-p` does not matter as the Proxy does not check credentials. `--auth ntlm` needs to be used as the Proxy only supports Simple and NTLM authentication at this point.
+#### Older versions
 
-```
-PS> hostname
-WinDev
-PS> python -m bloodhound -u x -p x -d [...] --auth ntlm -ns 127.0.0.1 -c dconly
-INFO: Found AD domain: [...]
-INFO: Connecting to LDAP server: WinDev
-INFO: Found 1 domains
-INFO: Found 2 domains in the forest
-INFO: Found 2495 users
-INFO: Connecting to GC LDAP server: WinDev
-INFO: Connecting to LDAP server: WinDev
-INFO: Found 552 groups
-INFO: Found 2 gpos
-INFO: Found 223 ous
-INFO: Found 19 containers
-INFO: Found 102 computers
-INFO: Found 1 trusts
-INFO: Done in 00M 41S
+Older versions of Windows do support the `/UserName` endpoints so we can also use those to obtain data via ADWS:
+
+```powershell
+.\ADWSProxy.exe -m "Username" -u "user" -p "password" --domain "[...]" --domaincontroller "dc01.[...]"
 ```
 
-## About
+### Linux/Docker Example:
 
-[ActiveDirectoryWebService.cs](ADWSProxy/ADWS/ActiveDirectoryWebService.cs) was the only generated code used within the tool. The following command was used to generate this code:
+Building the image from source:
 
+```bash
+$ git clone https://github.com/RabobankRedTeam/ADWSProxy.git
+$ cd ADWSProxy
+$ docker build -f ADWSProxy/Dockerfile -t adwsproxy -q .
+$ docker images
+REPOSITORY   TAG       IMAGE ID       CREATED         SIZE
+adwsproxy    latest    [...]
 ```
-SvcUtil.exe /nologo /noconfig /t:code /n:*,ADWSProxy.ADWS net.tcp://[...]:9389/ActiveDirectoryWebServices/mex /serializer:XmlSerializer
+
+Using the image:
+
+```bash
+$ docker run \
+  -p 53:53/tcp -p 53:53/udp -p 389:389/tcp -p 3268:3268/tcp \
+  --hostname DESKTOP-KGL8YVZ \
+  -it adwsproxy:latest \
+  --mode Windows \
+  --username "user" \
+  --password "password" \
+  --domaincontroller dc01.[...] \
+  --domain [...]
 ```
 
-## Blog post
+## Technical Details
 
-More information about ADWS and the development of this tool can be found within the [Rabobank TechBlog](https://rabobank.jobs/en/techblog/adws-an-unconventional-path-into-active-directory-luc-kolen/).
+### Binary SID Parsing
+
+To ensure full Linux compatibility, this version of ADWSProxy bypasses the `System.Security.Principal.Windows` namespace. It manually decodes the 28-byte binary `objectSid` blobs returned by ADWS into the standard string format (`S-1-5-21-...`) using a zero-dependency bit-shifter.
+
+### Code Generation
+
+The ADWS client proxy code (`ActiveDirectoryWebService.cs`) is generated using `dotnet-svcutil`. This ensures compatibility with the .NET 8.0 `System.ServiceModel` stack.
+
+```powershell
+dotnet --fx-version 8.0.23 "C:\Users\luc\.dotnet\tools\.store\dotnet-svcutil\8.0.0\dotnet-svcutil\8.0.0\tools\net8.0\any\dotnet-svcutil.dll" `
+  net.tcp://dc01.[...]:9389/ActiveDirectoryWebServices/mex `
+  --namespace "*,ADWSProxy.ADWS" `
+  --outputFile "ActiveDirectoryWebService.cs" `
+  --serializer XmlSerializer `
+  --targetFramework net8.0 `
+  --sync
+```
+
+### Mandatory RPC Sealing and Signing
+
+Server 2025 enforces strict integrity requirements. All NTLM/Kerberos tokens must negotiate 128-bit encryption and message signing (Seal & Sign).
+
+>Technical Note: This tool automatically configures ProtectionLevel.EncryptAndSign to meet this requirement. If you encounter 0x80090302 (Invalid Token), ensure your client machine's clock is synchronized with the Domain Controller.
+
+### NTLMv1 Retirement
+
+Server 2025 has effectively retired NTLMv1. If running this tool from a Linux environment, ensure you have the `gss-ntlmssp` package installed to support modern NTLMv2/Negotiate handshakes.
+
+## Integration Testing (Bloodhound)
+
+[Bloodhound-Python](https://github.com/dirkjanm/BloodHound.py) can be used with this proxy by setting the `-ns` argument to the proxy's IP. The proxy spoofs the LDAP response to make itself appear as the Domain Controller.
+
+```bash
+# Example using NTLM authentication through the proxy
+python3 -m bloodhound -u x -p x -d [...] --auth ntlm -ns 127.0.0.1 -c DCOnly
+```
+
+>Technical Note: Bloodhound-Python can't run with `only-use-gc-backend` set to true as the dataset returned by the GC is less complete than the default dataset.
+
+## Blog Post & Background
+
+Detailed research into ADWS exploitation and the architecture of this tool is available on the [Rabobank TechBlog](https://rabobank.jobs/en/techblog/adws-an-unconventional-path-into-active-directory-luc-kolen/).
+
+## Test client
+
+A test client that can run queries via the following methods; ADWS, ADWS-Global Catalog, LDAP(S), and LDAP(S)-Global Catalogis available. A sample [tests.json](/TestClient/tests.json) file is included with the repository.
+Note that the test client has only been tested with Server 2022 and may not be fully compatible with Server 2025.

@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "ADWSProxy": {
+      "commandName": "Project",
+      "commandLineArgs": "--domaincontroller dc01 --globalcatalog dc01 --consoleloglevel DEBUG"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "DockerfileRunArguments": "-p 389:389 -p 3268:3268",
+      "commandLineArgs": "--domaincontroller dc01 --globalcatalog dc01 --consoleloglevel DEBUG"
+    }
+  }
+}

@@ -1,27 +1,22 @@
-﻿using ADWSProxy.LDAP;
-using CommandLine.Text;
-using CommandLine;
-using DNS.Server;
+﻿using ADWSProxy.DNS;
+using ADWSProxy.LDAP;
+using ARSoft.Tools.Net.Dns;
 using log4net;
-using Newtonsoft.Json;
-using System;
-using System.Globalization;
-using System.Linq;
+using Microsoft.Extensions.Configuration;
 using System.Net;
-using System.Net.NetworkInformation;
 
 namespace ADWSProxy
 {
-    internal class Program
+    public class Program
     {
-        private static readonly ILog logger = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly ILog logger = LogHelper.GetLogger(typeof(Program));
 
         // Handles IPv4 and IPv6 notation.
         private static IPEndPoint CreateIPEndPoint(string endPoint)
         {
             string[] ep = endPoint.Split(':');
             if (ep.Length < 2) throw new FormatException("Invalid endpoint format");
-            IPAddress ip;
+            IPAddress? ip;
             if (ep.Length > 2)
             {
                 if (!IPAddress.TryParse(string.Join(":", ep, 0, ep.Length - 1), out ip))
@@ -36,85 +31,126 @@ namespace ADWSProxy
                     throw new FormatException("Invalid ip-adress");
                 }
             }
-            if (!int.TryParse(ep[ep.Length - 1], NumberStyles.None, NumberFormatInfo.CurrentInfo, out int port))
+            if (!int.TryParse(ep[^1], out int port))
             {
                 throw new FormatException("Invalid port");
             }
             return new IPEndPoint(ip, port);
         }
 
-        private static void Main(string[] args)
+        public static void Main(string[] args)
         {
-            var parser = new Parser(with => with.HelpWriter = null);
-            var parsedArgs = parser.ParseArguments<CommandLineOptions>(args);
-
-            if (parsedArgs.Tag == ParserResultType.NotParsed)
+            if (args.Any(a => a.Equals("--help", StringComparison.OrdinalIgnoreCase) || a.Equals("-h", StringComparison.OrdinalIgnoreCase)))
             {
-                var helpText = HelpText.AutoBuild(parsedArgs, h =>
-                {
-                    h.Copyright = $"Created by Rabobank Red Team";
-                    h.AutoVersion = true ;
-                    return h;
-                });
-                Console.WriteLine(helpText);
-                Console.WriteLine("Press enter to close");
-                Console.ReadLine();
-                Environment.Exit(1);
+                CommandLineOptions.ShowHelp();
                 return;
             }
 
-            LoggerConfig.ConfigureLogger(parsedArgs.Value.ConsoleLogLevel, parsedArgs.Value.LogDirectory);
+            var configuration = new ConfigurationBuilder()
+                .AddCommandLine(args, new Dictionary<string, string>{
+                    { "-u", "username" },
+                    { "-p", "password" },
+                    { "-D", "domain" },
+                    { "-m", "mode" },
+                    { "-dc", "domaincontroller" },
+                    { "-gc", "globalcatalog" }
+                })
+                .Build();
 
-            logger.Info("Starting ADWSproxy.");
+            var options = new CommandLineOptions();
+            configuration.Bind(options);
 
-            var exitCode = 0;
-            Listener LDAPListener = null;
-            Listener GCListener = null;
-
-            var credentials = parsedArgs.Value.GetNetworkCredential();
+            if (string.IsNullOrWhiteSpace(options.DomainController))
+            {
+                logger.Error("Error: --domaincontroller is required");
+                CommandLineOptions.ShowHelp();
+                return;
+            }
 
             try
             {
-                var LDAPEndpoint = $"0.0.0.0:{parsedArgs.Value.LDAPPort}";
-                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), parsedArgs.Value.DomainController, parsedArgs.Value.ADWSDCPort, parsedArgs.Value.LDAPInstance, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
-                LDAPListener.Start();
-                logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {parsedArgs.Value.LDAPInstance}");
+                _ = options.GetNetworkCredential();
+            }
+            catch (Exception ex)
+            {
+                logger.Error($"Error: {ex.Message}");
+                CommandLineOptions.ShowHelp();
+                return;
+            }
 
-                if (string.IsNullOrWhiteSpace(parsedArgs.Value.GlobalCatalog))
+            LoggerConfig.ConfigureLogger(options.ConsoleLogLevel, options.LogDirectory);
+
+            logger.Info("Starting ADWSproxy");
+
+            var exitCode = 0;
+            Listener? LDAPListener = null;
+            Listener? GCListener = null;
+
+            try
+            {
+                const string gcInstance = "ldap:3268";
+                string ldapInstance = options.OnlyUseGCBackend ? gcInstance : "ldap:389";
+                var LDAPEndpoint = $"{options.ListenIP}:{options.LDAPPort}";
+                var dc = options.DomainController;
+                ArgumentNullException.ThrowIfNullOrWhiteSpace(dc);
+
+                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, options.ADWSDCPort, ldapInstance, options.Mode, options.GetNetworkCredential());
+                LDAPListener.Start();
+                logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {ldapInstance}");
+
+                var gc = options.GlobalCatalog;
+                if (string.IsNullOrWhiteSpace(gc))
                 {
                     logger.Info($"No Global Catalog server defined so no Global Catalog listener has been started");
                 }
                 else
                 {
-                    var GCEndpoint = $"0.0.0.0:{parsedArgs.Value.GCPort}";
-                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), parsedArgs.Value.GlobalCatalog, parsedArgs.Value.ADWSGCPort, parsedArgs.Value.GCInstance, parsedArgs.Value.UseWindowsAuth.GetValueOrDefault(), credentials);
+                    var GCEndpoint = $"{options.ListenIP}:{options.GCPort}";
+
+                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, options.ADWSGCPort, gcInstance, options.Mode, options.GetNetworkCredential());
                     GCListener.Start();
-                    logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {parsedArgs.Value.GCInstance}");
+                    logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {gcInstance}");
                 }
+
+                if (options.SkipDns)
+                {
+                    logger.Info("Skipping DNS listener startup");
+                }
+                else
+                {
+                    try
+                    {
+                        if (StartDNS(options.ExitOnDNSStartError, options.LDAPPort, options.GCPort, options.HostIP))
+                        {
+                            logger.Info($"Succesfully started the DNSListener");
+                        }
+                        else
+                        {
+                            const string errorString = "Error starting DNSListner";
+                            throw new Exception(errorString);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex.Message, ex);
+                    }
+                }
+
 
                 try
                 {
-                    var dnsEndpoint = CreateIPEndPoint($"0.0.0.0:{parsedArgs.Value.DnsPort}");
-                    if (StartDNS(true, dnsEndpoint, parsedArgs.Value.LDAPPort, parsedArgs.Value.GCPort))
+                    if (options.SkipRootDSE)
                     {
-                        logger.Info($"Succesfully started the DNSListener on {dnsEndpoint}");
+                        logger.Info("Skipping RootDSE test for LDAP");
+
                     }
                     else
                     {
-                        const string errorString = "Error starting DNSListner";
-                        throw new Exception(errorString);
+                        logger.Info($"Trying to get RootDSE via LDAPListener");
+                        var rootDSE = LDAPListener.ADWSConnection.GetRootDSE();
+                        logger.Info("Succesfully got RootDSE via LDAPListener");
+                        logger.Debug($"LDAP RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex.Message, ex);
-                }
-
-                try
-                {
-                    var rootDSE = LDAPListener.ADWSConnection.GetRootDSE();
-                    logger.Info("Succesfully got RootDSE via LDAPListener");
-                    logger.Debug($"LDAP RootDSE: {JsonConvert.SerializeObject(rootDSE)}");
                 }
                 catch (Exception ex)
                 {
@@ -125,9 +161,16 @@ namespace ADWSProxy
                 {
                     if (GCListener != null)
                     {
-                        var rootDSE = GCListener.ADWSConnection.GetRootDSE();
-                        logger.Info("Succesfully got RootDSE via GCListener");
-                        logger.Debug($"GC RootDSE: {JsonConvert.SerializeObject(rootDSE)}");
+                        if (options.SkipRootDSE) {
+                            logger.Info("Skipping RootDSE test for GC");
+                        }
+                        else
+                        {
+                            logger.Info($"Trying to get RootDSE via GCListener");
+                            var rootDSE = GCListener.ADWSConnection.GetRootDSE();
+                            logger.Info("Succesfully got RootDSE via GCListener");
+                            logger.Debug($"GC RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -148,27 +191,26 @@ namespace ADWSProxy
             Environment.Exit(exitCode);
         }
 
-        /// <summary>
-        /// This wil start a DNS Server listening on UDP/53.
-        /// </summary>
-        private static bool StartDNS(bool ExitOnDNSStartError, IPEndPoint dnsEndpoint, ushort ldapPort, ushort gcPort)
+        private static bool StartDNS(bool ExitOnDNSStartError, ushort ldapPort, ushort gcPort, string? hostIp = null)
         {
-            bool alreadyinuse = IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners().Any(p => p.Port == dnsEndpoint.Port);
-            if (alreadyinuse)
+            try
             {
-                string errorMessage = $"Port UDP/{dnsEndpoint.Port} is already in use, unable to start DNS resolver.";
-                logger.Error(errorMessage);
+                IPAddress? h = string.IsNullOrWhiteSpace(hostIp) ? null : IPAddress.Parse(hostIp);
+                var resolver = new Resolver(ldapPort, gcPort, h);
+                DnsServer server = new(10, 10);
+                server.QueryReceived += resolver.OnQueryReceived;
+                server.Start();
+                logger.Info("DNS Server is live on UDP and TCP port 53");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.Error("Error starting DNS server", ex);
                 if (ExitOnDNSStartError)
                 {
                     Environment.Exit(1);
                 }
                 return false;
-            }
-            else
-            {
-                DnsServer dnsServer = new DnsServer(new DNS.Resolver(ldapPort, gcPort), dnsEndpoint);
-                dnsServer.Listen();
-                return true;
             }
         }
     }

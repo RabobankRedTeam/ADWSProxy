@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "TestClient": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "commandLineArgs": "-u USER -p PASSWORD -d DOMAIN"
+    }
+  }
+}

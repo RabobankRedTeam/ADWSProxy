@@ -1,95 +1,95 @@
-﻿using DNS.Client.RequestResolver;
-using DNS.Protocol;
-using DNS.Protocol.ResourceRecords;
-using System;
+﻿using ARSoft.Tools.Net;
+using ARSoft.Tools.Net.Dns;
 using System.Net;
-using System.Net.Sockets;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace ADWSProxy.DNS
 {
-    internal class Resolver : IRequestResolver
+    internal class Resolver
     {
-        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly log4net.ILog logger = LogHelper.GetLogger(typeof(Resolver));
 
-        public Resolver(ushort ldapPort, ushort gcport)
+        public Resolver(ushort ldapPort, ushort gcPort, IPAddress? localIP = null)
         {
-            logger.Info($"Constructing new {GetType().FullName}");
-
             LdapPort = ldapPort;
-            Gcport = gcport;
+            GcPort = gcPort;
             Hostname = Dns.GetHostName();
-            IPAddress = GetLocalIPAddress();
-
-            logger.Debug($"DNS Hostname: {Hostname}");
-            logger.Debug($"Local IP address: {IPAddress}");
+            LocalIP = localIP ?? GetLocalIPAddress();
+            logger.Info($"ARSoft Resolver Initialized. Host: {Hostname}, IP: {LocalIP}");
         }
 
-        private ushort Gcport { get; }
-        private string Hostname { get; set; }
-        private IPAddress IPAddress { get; set; }
         private ushort LdapPort { get; }
+        private ushort GcPort { get; }
+        private string Hostname { get; }
+        private IPAddress LocalIP { get; }
 
-        public Task<IResponse> Resolve(IRequest request, CancellationToken cancellationToken = default)
+        public Task OnQueryReceived(object sender, QueryReceivedEventArgs e)
         {
-            logger.Info("Resolving new DNS request");
+            if (e.Query is not DnsMessage query) return Task.CompletedTask;
 
-            IResponse response = Response.FromRequest(request);
+            // Create a response based on the query
+            DnsMessage response = query.CreateResponseInstance();
+            response.ReturnCode = ReturnCode.NoError;
+            response.IsAuthoritiveAnswer = true;
 
-            foreach (Question question in response.Questions)
+            foreach (var question in query.Questions)
             {
-                logger.Debug($"DNS request = {question.Name}");
+                string name = question.Name.ToString().ToLower().TrimEnd('.');
+                logger.Debug($"Processing {question.RecordType} query for: {name}");
 
-                switch (question.Type)
+                switch (question.RecordType)
                 {
                     case RecordType.A:
-                        IResourceRecord recordA = new IPAddressResourceRecord(question.Name, IPAddress);
-                        response.AnswerRecords.Add(recordA);
+                        // Redirect all A-record lookups to the Proxy's IP
+                        response.AnswerRecords.Add(new ARecord(question.Name, 3600, LocalIP));
                         break;
 
-                    //case RecordType.AAAA:
-                    //    IResourceRecord recordAAAA = new IPAddressResourceRecord(question.Name, IPAddress.Parse("::1"));
-                    //    response.AnswerRecords.Add(recordAAAA);
-                    //    break;
+                    case RecordType.Srv:
+                        ushort targetPort = DetermineSrvPort(name);
 
-                    case RecordType.SRV:
-                        ushort port = 1;
-                        if (question.Name.ToString().StartsWith("_ldap._tcp.pdc._msdcs.", StringComparison.OrdinalIgnoreCase))
-                        {
-                            port = LdapPort;
-                        }
-                        else if (question.Name.ToString().StartsWith("_ldap._tcp.gc._msdcs.", StringComparison.OrdinalIgnoreCase))
-                        {
-                            port = Gcport;
-                        }
-                        IResourceRecord recordSRV = new ServiceResourceRecord(question.Name, 0, 100, port, new Domain(Hostname));
-                        response.AnswerRecords.Add(recordSRV);
+                        // Target must be a DomainName object in ARSoft
+                        //DomainName targetHost = DomainName.Parse(Hostname);
+                        DomainName target = DomainName.Parse(LocalIP.ToString());
+
+                        response.AnswerRecords.Add(new SrvRecord(
+                            question.Name,
+                            3600,    // TTL
+                            0,       // Priority
+                            100,     // Weight
+                            targetPort,
+                            target));
+
+                        logger.Info($"Spoofed SRV: {name} -> {target}:{targetPort}");
+
                         break;
 
                     default:
-                        throw new NotImplementedException($"RequestType: {question.Type} has not been implemented");
+                        // For other types, we return an empty success or let it time out
+                        logger.Debug($"Ignoring unsupported record type: {question.RecordType}");
+                        break;
                 }
             }
 
-            logger.Debug($"DNS response = {response}");
-            return Task.FromResult(response);
+            e.Response = response;
+            return Task.CompletedTask;
+        }
+
+        private ushort DetermineSrvPort(string queryName)
+        {
+            if (queryName.Contains("_ldap._tcp")) return LdapPort;
+            if (queryName.Contains("_gc._tcp")) return GcPort;
+            if (queryName.Contains("_identity._tcp") || queryName.Contains("_adws._tcp"))
+            {
+                return 9389;
+            }
+
+            return 1;
         }
 
         private static IPAddress GetLocalIPAddress()
         {
-            var host = Dns.GetHostEntry(Dns.GetHostName());
-            foreach (var ip in host.AddressList)
-            {
-                if (ip.AddressFamily == AddressFamily.InterNetwork)
-                {
-                    return ip;
-                }
-            }
-
-            const string errorString = "No network adapters with an IPv4 address in the system!";
-            logger.Error(errorString);
-            throw new Exception(errorString);
+            return Dns.GetHostEntry(Dns.GetHostName()).AddressList
+                .FirstOrDefault(ip => ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                ?? throw new Exception("No IPv4 address found!");
         }
     }
 }

@@ -1,28 +1,22 @@
 ﻿using ADWSProxy.ADWS;
 using Flexinets.Ldap.Core;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Principal;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ADWSProxy.LDAP
 {
     internal class Listener : IDisposable
     {
-        private static readonly log4net.ILog logger = log4net.LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
+        private static readonly log4net.ILog logger = LogHelper.GetLogger(typeof(Listener));
 
-        public Listener(IPEndPoint endpoint, string domainController, int adwsPort, string instance, bool useWindowsAuth, NetworkCredential credential = null)
+        public Listener(IPEndPoint endpoint, string domainController, int adwsPort, string instance, AdwsEndpoint mode, NetworkCredential? credential = null)
         {
             logger.Info($"Constructing new {GetType().FullName}");
 
             TcpListener = new TcpListener(endpoint);
 
-            ADWSConnection = new Connection(domainController, adwsPort, instance, useWindowsAuth, credential);
+            ADWSConnection = new Connection(domainController, adwsPort, instance, mode, credential);
             Instance = instance;
         }
 
@@ -48,20 +42,20 @@ namespace ADWSProxy.LDAP
         /// Handle bindrequests
         /// </summary>
         /// <param name="bindrequest"></param>
-        private bool HandleBindRequest(Stream stream, LdapPacket requestPacket)
+        private static bool HandleBindRequest(Stream stream, LdapPacket requestPacket)
         {
             logger.Info($"Handling bind request");
 
             var bindrequest = requestPacket.ChildAttributes.SingleOrDefault(o => o.LdapOperation == LdapOperation.BindRequest);
-            var passwordAttribute = bindrequest.ChildAttributes[2];
+            var passwordAttribute = bindrequest?.ChildAttributes[2];
 
-            LdapAttribute ldapResultPacket = null;
+            LdapAttribute? ldapResultPacket = null;
 
-            switch (passwordAttribute.ContextType)
+            switch (passwordAttribute?.ContextType)
             {
                 case 0:
                     logger.Debug("Simple authentication");
-                    var username = bindrequest.ChildAttributes[1].GetValue<string>();
+                    var username = bindrequest?.ChildAttributes[1].GetValue<string>();
                     var password = passwordAttribute.GetValue<string>();
                     logger.Debug($"Credentials: {username}:{password}");
                     ldapResultPacket = new LdapResultAttribute(LdapOperation.BindResponse, LdapResult.success);
@@ -83,7 +77,7 @@ namespace ADWSProxy.LDAP
                     break;
 
                 default:
-                    logger.Error($"Unknown authentication type: '{passwordAttribute.ContextType}'");
+                    logger.Error($"Unknown authentication type: '{passwordAttribute?.ContextType}'");
                     ldapResultPacket = new LdapResultAttribute(LdapOperation.BindResponse, LdapResult.success, matchedDN: string.Empty);
                     break;
             }
@@ -93,7 +87,7 @@ namespace ADWSProxy.LDAP
             responsePacket.ChildAttributes.Add(ldapResultPacket);
             var responseBytes = responsePacket.GetBytes();
             stream.Write(responseBytes, 0, responseBytes.Length);
-            return ldapResultPacket.ChildAttributes.First(i => i.DataType == UniversalDataType.Enumerated).GetRawValue()[0] == (byte)LdapResult.success;
+            return ldapResultPacket?.ChildAttributes.First(i => i.DataType == UniversalDataType.Enumerated)!.GetRawValue()![0] == (byte)LdapResult.success;
         }
 
         private void HandleClient(TcpClient client)
@@ -122,7 +116,7 @@ namespace ADWSProxy.LDAP
 
                     if (isBound)
                     {
-                        logger.Debug("Client is bound. We can continue.");
+                        logger.Debug("Client is bound. We can continue");
 
                         if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.SearchRequest))
                         {
@@ -131,9 +125,9 @@ namespace ADWSProxy.LDAP
                     }
                     logger.Info("Packet handling done!");
                 }
-                catch (System.ArgumentException ex)
+                catch (ArgumentException ex)
                 {
-                    logger.Error("ArgumentException. Continuing.", ex);
+                    logger.Error("ArgumentException. Continuing", ex);
                 }
                 catch (Exception ex)
                 {
@@ -148,83 +142,37 @@ namespace ADWSProxy.LDAP
             logger.Debug("Handling Search request");
 
             var searchRequest = requestPacket.ChildAttributes.SingleOrDefault(o => o.LdapOperation == LdapOperation.SearchRequest);
-            var dnAttribute = searchRequest.ChildAttributes.First();
-            var scopeAttribute = searchRequest.ChildAttributes[1];
-            var filterAttributes = searchRequest.ChildAttributes.Where(item => item.Class == TagClass.Context);
-            var propertiesAttribute = searchRequest.ChildAttributes.Last();
+            var dnAttribute = searchRequest?.ChildAttributes.First();
+            var scopeAttribute = searchRequest?.ChildAttributes[1];
+            var filterAttributes = searchRequest?.ChildAttributes.Where(item => item.Class == TagClass.Context);
+            var propertiesAttribute = searchRequest?.ChildAttributes.Last();
 
-            var filter = ParseFilters(filterAttributes);
-            var properties = ParseProperties(propertiesAttribute);
-            var dn = dnAttribute.GetValue<string>();
+            var filter = ParseFilters(filterAttributes!);
+            var properties = ParseProperties(propertiesAttribute!);
+            var dn = dnAttribute?.GetValue<string>();
 
-            var scopeValue = scopeAttribute.GetValue();
-
-            string scope;
-            switch (scopeValue)
+            var scopeValue = scopeAttribute!.GetValue();
+            string scope = scopeValue switch
             {
-                case "\u0001":
-                    scope = "onelevel";
-                    break;
-
-                case "\u0002":
-                    scope = "subtree";
-                    break;
-
-                case "\0":
-                    scope = "base";
-                    break;
-
-                default:
-                    throw new NotImplementedException($"'{scopeValue}' is an unknown scope identifier");
-            }
-
+                "\u0001" => "onelevel",
+                "\u0002" => "subtree",
+                "\0" => "base",
+                _ => throw new NotImplementedException($"'{scopeValue}' is an unknown scope identifier"),
+            };
             logger.Info($"Request DN = {dn}");
             logger.Info($"Request filter = {filter}");
             logger.Info($"Request properties = {string.Join(",", properties)}");
             logger.Info($"Request scopeIdentifier = {scopeValue}, Scope: {scope}");
 
-            // TODO: Check if there is a more elegant solution to this.
-            if (dn.Equals("") && filter.ToLower().Equals("(objectclass=*)") && scope == "base")
-            {
-                try
-                {
-                    var rootDSE = ADWSConnection.GetRootDSE();
-                    var rootDSEEntryPacket = new LdapPacket(requestPacket.MessageId);
-                    var rootDSEResultEntry = new LdapAttribute(LdapOperation.SearchResultEntry);
-
-                    rootDSEResultEntry.ChildAttributes.Add(new LdapAttribute(UniversalDataType.OctetString, string.Empty));
-                    rootDSEResultEntry = rootDSEResultEntry.AddItemsToResponse(rootDSE);
-
-                    rootDSEEntryPacket.ChildAttributes.Add(rootDSEResultEntry);
-
-                    byte[] responseEntryBytes = rootDSEEntryPacket.GetBytes();
-                    stream.Write(responseEntryBytes, 0, responseEntryBytes.Length);
-
-                    var ldapPacket = new LdapPacket(requestPacket.MessageId);
-                    ldapPacket.ChildAttributes.Add(new LdapResultAttribute(LdapOperation.SearchResultDone, LdapResult.success));
-                    var ldapPacketBytes = ldapPacket.GetBytes();
-                    stream.Write(ldapPacketBytes, 0, ldapPacketBytes.Length);
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex.Message, ex);
-                    var ldapPacket = new LdapPacket(requestPacket.MessageId);
-                    ldapPacket.ChildAttributes.Add(new LdapResultAttribute(LdapOperation.SearchResultDone, LdapResult.operationError, diagnosticMessage: ex.Message));
-                    var ldapPacketBytes = ldapPacket.GetBytes();
-                    stream.Write(ldapPacketBytes, 0, ldapPacketBytes.Length);
-                }
-                return;
-            }
-
             var blockedProperties = new List<string>();
             // Bloodhound.py requested the a number of non existing properties during testing.
             // These are removed from the request as this would cause an exception when sent to the ADWS endpoint.
             // Root cause of this issue has not been investigated as manually blocking these properties works for now.
-            if (dn.ToLower().StartsWith("cn=aggregate,cn=schema,cn=configuration,dc=")
-                && filter.ToLower().Equals("(objectclass=subschema)")
+            if (dn!.StartsWith("cn=aggregate,cn=schema,cn=configuration,dc=", StringComparison.OrdinalIgnoreCase)
+                && filter.Equals("(objectclass=subschema)", StringComparison.OrdinalIgnoreCase)
                 && scope.Equals("base"))
             {
-                blockedProperties.AddRange(new[] { "createtimestamp", "ldapsyntaxes", "matchingrules", "matchingruleuse", "ditstructurerules", "nameforms" });
+                blockedProperties.AddRange(["createtimestamp", "ldapsyntaxes", "matchingrules", "matchingruleuse", "ditstructurerules", "nameforms"]);
             }
             foreach (var blockedProperty in blockedProperties)
             {
@@ -232,7 +180,7 @@ namespace ADWSProxy.LDAP
             }
             logger.Debug($"Filtered request properties = {string.Join(",", properties)}");
 
-            ADWSConnection.Enumerate(dn, filter, properties, scope, ((string, List<DataHolder>) result) =>
+            ADWSConnection.Enumerate(dn!, filter, properties, scope, result =>
             {
                 logger.Info($"Result DN = {result.Item1}");
 
@@ -254,76 +202,62 @@ namespace ADWSProxy.LDAP
             stream.Write(responseDoneBytes, 0, responseDoneBytes.Length);
         }
 
-        private void LogPacket(LdapAttribute attribute)
+        private static void LogPacket(LdapAttribute attribute)
         {
             var sb = new StringBuilder();
             RecurseAttributes(sb, attribute);
             logger.Debug($"Recieved LDAP Packet dump\n{sb}");
         }
 
-        private string ParseFilter(LdapAttribute filterAttribute, StringBuilder sb = null)
+        private static string ParseFilter(LdapAttribute filterAttribute, StringBuilder? sb = null)
         {
+            sb ??= new StringBuilder();
+
             var context = (LdapFilterChoice?)filterAttribute.ContextType;
             if (context == null)
             {
-                return null;
+                return sb.ToString();
             }
 
-            if (sb == null)
-            {
-                sb = new StringBuilder();
-            }
-
-            sb.Append("(");
+            sb.Append('(');
 
             switch (context)
             {
                 case LdapFilterChoice.and:
-                    sb.Append("&");
+                    sb.Append('&');
                     break;
 
                 case LdapFilterChoice.or:
-                    sb.Append("|");
+                    sb.Append('|');
                     break;
 
                 case LdapFilterChoice.not:
-                    sb.Append("!");
+                    sb.Append('!');
                     break;
 
                 case LdapFilterChoice.substrings:
                     var subStringAttribute = filterAttribute.ChildAttributes[1].ChildAttributes.First();
                     string substring = subStringAttribute.GetValue<string>();
-                    string value;
-                    switch (subStringAttribute.ContextType)
+                    string value = subStringAttribute.ContextType switch
                     {
-                        case 0:
-                            value = $"{substring}*";
-                            break;
-
-                        case 1:
-                            value = $"*{substring}*";
-                            break;
-
-                        case 2:
-                            value = $"*{substring}";
-                            break;
-
-                        default:
-                            throw new NotImplementedException($"Unknown ContextType: '{subStringAttribute.ContextType}' in subStringAttribute");
-                    }
-
+                        0 => $"{substring}*",
+                        1 => $"*{substring}*",
+                        2 => $"*{substring}",
+                        _ => throw new NotImplementedException($"Unknown ContextType: '{subStringAttribute.ContextType}' in subStringAttribute"),
+                    };
                     sb.Append($"{filterAttribute.ChildAttributes[0].GetValue<string>()}={value}");
                     break;
 
                 case LdapFilterChoice.equalityMatch:
                     var name = filterAttribute.ChildAttributes[0].GetValue<string>();
-                    if (name.ToLowerInvariant() == "objectsid")
+                    if (!string.IsNullOrEmpty(name) && name.Equals("objectsid", StringComparison.OrdinalIgnoreCase))
                     {
-                        var bytesValue = filterAttribute.ChildAttributes[1].GetRawValue();
+                        var bytesValue = filterAttribute.ChildAttributes[1].GetRawValue()!;
                         string sid;
                         try
                         {
-                            sid = new SecurityIdentifier(bytesValue, 0).ToString();
+                            // sid = new SecurityIdentifier(bytesValue, 0).ToString();
+                            sid = Helpers.ConvertByteSidToStringSid(bytesValue);
                         }
                         catch (Exception ex)
                         {
@@ -356,7 +290,7 @@ namespace ADWSProxy.LDAP
                     break;
 
                 case LdapFilterChoice.extensibleMatch:
-                    var extensibleMatchValue = filterAttribute.ChildAttributes[2].GetRawValue();
+                    var extensibleMatchValue = filterAttribute.ChildAttributes[2].GetRawValue()!;
 
                     if (extensibleMatchValue.Length == 1 && extensibleMatchValue.First() == 0xff)
                     {
@@ -373,22 +307,22 @@ namespace ADWSProxy.LDAP
                     throw new NotImplementedException($"Unknown ContextType: '{filterAttribute.ContextType}' in filterAttribute");
             }
 
-            foreach (var child in filterAttribute.ChildAttributes.Where(item => item.ChildAttributes.Any()))
+            foreach (var child in filterAttribute.ChildAttributes.Where(item => item.ChildAttributes.Count != 0))
             {
                 ParseFilter(child, sb);
             }
-            sb.Append(")");
+            sb.Append(')');
 
             return sb.ToString();
         }
 
-        private string ParseFilters(IEnumerable<LdapAttribute> filterAttribute)
+        private static string ParseFilters(IEnumerable<LdapAttribute> filterAttribute)
         {
             var sb = new StringBuilder();
             foreach (var attr in filterAttribute)
             {
                 var temp = ParseFilter(attr);
-                if (!temp.StartsWith("("))
+                if (!temp.StartsWith('('))
                 {
                     temp = $"({temp})";
                 }
@@ -397,7 +331,7 @@ namespace ADWSProxy.LDAP
             return sb.ToString();
         }
 
-        private List<string> ParseProperties(LdapAttribute attributes)
+        private static List<string> ParseProperties(LdapAttribute attributes)
         {
             var result = new List<string>();
             if (attributes != null)
@@ -415,7 +349,7 @@ namespace ADWSProxy.LDAP
             return result;
         }
 
-        private void RecurseAttributes(StringBuilder sb, LdapAttribute attribute, int depth = 1)
+        private static void RecurseAttributes(StringBuilder sb, LdapAttribute attribute, int depth = 1)
         {
             if (attribute != null)
             {

@@ -1,0 +1,32 @@
+[
+  {
+    "Name": "Test (Docker)",
+    "Projects": [
+      {
+        "Path": "ADWSProxy\\ADWSProxy.csproj",
+        "Action": "Start",
+        "DebugTarget": "Container (Dockerfile)"
+      },
+      {
+        "Path": "TestClient\\TestClient.csproj",
+        "Action": "Start",
+        "DebugTarget": "Container (Dockerfile)"
+      }
+    ]
+  },
+  {
+    "Name": "Test",
+    "Projects": [
+      {
+        "Path": "ADWSProxy\\ADWSProxy.csproj",
+        "Action": "Start",
+        "DebugTarget": "ADWSProxy"
+      },
+      {
+        "Path": "TestClient\\TestClient.csproj",
+        "Action": "Start",
+        "DebugTarget": "TestClient"
+      }
+    ]
+  }
+]
