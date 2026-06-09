@@ -3,20 +3,20 @@ using log4net.Appender;
 using log4net.Filter;
 using log4net.Layout;
 using log4net.Repository.Hierarchy;
-using System.Text.Json;
+using Newtonsoft.Json;
 
 namespace TestClient
 {
     internal class LoggerConfig
     {
-        private static readonly JsonSerializerOptions jsonOptions = new()
+        private static readonly JsonSerializerSettings jsonSettings = new()
         {
-            WriteIndented = false
+            Formatting = Formatting.Indented
         };
 
         public static void LogDebug(ILog log, string message, object data)
         {
-            log.Debug($"{message} - {JsonSerializer.Serialize(data, jsonOptions)}");
+            log.Debug($"{message} - {JsonConvert.SerializeObject(data, jsonSettings)}");
         }
 
         public static void InitializeProgrammaticLogging(string logDirectory = "")

@@ -126,6 +126,24 @@
         "LDAP-GC",
         "LDAPS-GC"
       ]
+    },
+    {
+      "Name": "Entire domain",
+      "TargetOU": "{{DOMAIN_DN}}",
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "distinguishedName",
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "ADWS-GC",
+        "LDAP",
+        "LDAPS",
+        "LDAP-GC",
+        "LDAPS-GC"
+      ]
     }
   ]
 }

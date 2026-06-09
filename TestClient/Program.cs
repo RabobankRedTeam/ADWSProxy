@@ -1,7 +1,7 @@
 ﻿using log4net;
 using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
 using System.Net;
-using System.Text.Json;
 using TestClient;
 
 ILog log = LogManager.GetLogger(typeof(Program));
@@ -104,8 +104,8 @@ if (!string.IsNullOrWhiteSpace(options.Username) && !string.IsNullOrWhiteSpace(o
 
 log.Debug(jsonString);
 
-BenchmarkConfig? config = JsonSerializer.Deserialize<BenchmarkConfig>(
+BenchmarkConfig? config = JsonConvert.DeserializeObject<BenchmarkConfig>(
     jsonString,
-    new JsonSerializerOptions() { PropertyNameCaseInsensitive = true }
+    new JsonSerializerSettings()
 );
 ProgramHelpers.ExecuteTests(config, options.PauseBetweenEngines, credentials);

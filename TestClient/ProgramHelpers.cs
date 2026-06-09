@@ -1,4 +1,5 @@
 ﻿using log4net;
+using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Net;
 
@@ -130,9 +131,13 @@ namespace TestClient
                             ADWS_GC = adwsGcResults != null ? new { Values = adwsGcResults, TimeMs = adwsGcTime } : null
                         }
                     };
-                    var resultsJson = System.Text.Json.JsonSerializer.Serialize(allResults, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                     var fileName = $"{startTime:yyyyMMddhhmmss}_{test.Name}_results.json";
-                    File.WriteAllText(fileName, resultsJson);
+                    using (StreamWriter sw = new(fileName))
+                    {
+                        using JsonTextWriter jw = new(sw) { Formatting = Formatting.Indented };
+                        new JsonSerializer().Serialize(jw, allResults);
+                    }
+
                     log.Info($"  Results written to file: {fileName}");
                 }
                 catch (Exception ex)
@@ -144,5 +149,6 @@ namespace TestClient
                 log.Info("-----------------------------");
             }
         }
+
     }
 }
