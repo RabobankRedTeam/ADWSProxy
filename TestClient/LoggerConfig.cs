@@ -9,28 +9,35 @@ namespace TestClient
 {
     internal class LoggerConfig
     {
-
         private static readonly JsonSerializerOptions jsonOptions = new()
         {
             WriteIndented = false
         };
+
         public static void LogDebug(ILog log, string message, object data)
         {
             log.Debug($"{message} - {JsonSerializer.Serialize(data, jsonOptions)}");
         }
 
-        public static void InitializeProgrammaticLogging()
+        public static void InitializeProgrammaticLogging(string logDirectory = "")
         {
             Hierarchy hierarchy = (Hierarchy)LogManager.GetRepository();
+            string baseDir = string.IsNullOrWhiteSpace(logDirectory) ? Directory.GetCurrentDirectory() : Path.GetFullPath(logDirectory);
 
-            // 1. Define the shared pattern layout
-            PatternLayout patternLayout = new()
+            // 1. Structural Layout Definitions
+            PatternLayout clientPatternLayout = new()
             {
                 ConversionPattern = "%date %logger - %message%newline"
             };
-            patternLayout.ActivateOptions();
+            clientPatternLayout.ActivateOptions();
 
-            // 2. Filter out DEBUG logs (Shared by Info file and Console)
+            PatternLayout tracePatternLayout = new()
+            {
+                ConversionPattern = "%date | %-40logger [ %level ] %message%newline"
+            };
+            tracePatternLayout.ActivateOptions();
+
+            // 2. Global Minimum Thresholds
             LevelRangeFilter infoAndAboveFilter = new()
             {
                 LevelMin = log4net.Core.Level.Info,
@@ -38,57 +45,66 @@ namespace TestClient
             };
             infoAndAboveFilter.ActivateOptions();
 
-            // 3. Trace File Appender (Captures ALL levels down to DEBUG)
+            // 3. Only allow "TestClient" logs here
+            LoggerMatchFilter acceptOnlyClientFilter = new()
+            {
+                LoggerToMatch = "TestClient",
+                AcceptOnMatch = true
+            };
+            acceptOnlyClientFilter.ActivateOptions();
+
+            // Deny everything else that didn't match the TestClient prefix
+            DenyAllFilter denyEverythingElseFilter = new();
+            denyEverythingElseFilter.ActivateOptions();
+
+            // 4. Trace File Appender
             RollingFileAppender traceAppender = new()
             {
                 Name = "TraceFileAppender",
-                File = Path.Combine(Directory.GetCurrentDirectory(), "trace.log"),
+                File = Path.Combine(baseDir, "trace.log"),
                 AppendToFile = true,
                 RollingStyle = RollingFileAppender.RollingMode.Size,
                 MaxFileSize = 100 * 1024 * 1024,
                 MaxSizeRollBackups = 500,
                 StaticLogFileName = true,
-                Layout = patternLayout
+                Layout = tracePatternLayout
             };
             traceAppender.ActivateOptions();
 
-            // 4. Info File Appender (INFO and ERROR only)
+            // 5. Info File Appender (INFO+ only)
             RollingFileAppender infoAppender = new()
             {
                 Name = "InfoFileAppender",
-                File = Path.Combine(Directory.GetCurrentDirectory(), "info.log"),
+                File = Path.Combine(baseDir, "info.log"),
                 AppendToFile = true,
                 RollingStyle = RollingFileAppender.RollingMode.Size,
                 MaxFileSize = 100 * 1024 * 1024,
                 MaxSizeRollBackups = 500,
                 StaticLogFileName = true,
-                Layout = patternLayout
+                Layout = clientPatternLayout
             };
-            infoAppender.AddFilter(infoAndAboveFilter);
+            infoAppender.AddFilter(infoAndAboveFilter);        // Restrict to INFO+
             infoAppender.ActivateOptions();
 
-            // 5. Console Appender (INFO and ERROR only)
+            // 6. Console Appender (TestClient INFO+ only)
             ConsoleAppender consoleAppender = new()
             {
                 Name = "ConsoleAppender",
-                Layout = patternLayout
+                Layout = clientPatternLayout
             };
-            consoleAppender.AddFilter(infoAndAboveFilter);
+            consoleAppender.AddFilter(infoAndAboveFilter);      // Restrict to INFO+
+            consoleAppender.AddFilter(acceptOnlyClientFilter);   // Pass if TestClient
+            consoleAppender.AddFilter(denyEverythingElseFilter); // Drop if not TestClient
             consoleAppender.ActivateOptions();
 
-            // 6. Attach all three destinations to the root hierarchy
+            // 7. Establish the Hierarchy Root Boundary
+            hierarchy.Root.RemoveAllAppenders();
             hierarchy.Root.AddAppender(traceAppender);
             hierarchy.Root.AddAppender(infoAppender);
             hierarchy.Root.AddAppender(consoleAppender);
 
-            // Ensure root level allows DEBUG to pass through to the Trace appender
-            hierarchy.Root.Level = log4net.Core.Level.Debug;
-
-            if (hierarchy.GetLogger("ADWSProxy") is Logger proxyLogger)
-            {
-                proxyLogger.Level = log4net.Core.Level.Verbose;
-                proxyLogger.Additivity = false;
-            }
+            // Open the floodgates at the root level so everything flows to the trace appender
+            hierarchy.Root.Level = log4net.Core.Level.Verbose;
 
             hierarchy.Configured = true;
             hierarchy.RaiseConfigurationChanged(EventArgs.Empty);
