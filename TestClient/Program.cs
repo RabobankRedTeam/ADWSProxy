@@ -60,6 +60,22 @@ if (jsonString.Contains("{{DOMAIN_DN}}"))
     jsonString = jsonString.Replace("{{DOMAIN_DN}}", baseDN);
 }
 
+if (jsonString.Contains("{{LOGONSERVER}}"))
+{
+    string? currentLogonServer = Environment.GetEnvironmentVariable("LOGONSERVER");
+    if (string.IsNullOrWhiteSpace(currentLogonServer))
+    {
+        log.Error("Current LOGONSERVER is empty. {{LOGONSERVER}} placeholder can not be replaced");
+        return;
+    }
+    while(currentLogonServer.StartsWith("\\\\"))
+    {
+        currentLogonServer = currentLogonServer[2..];
+    }
+    log.Info("Replacing {{LOGONSERVER}} placeholder with current logonserver: " +  currentLogonServer);
+    jsonString = jsonString.Replace("{{LOGONSERVER}}", currentLogonServer);
+}
+
 if (jsonString.Contains("{{USERNAME}}"))
 {
     string currentUsername = options.Username ?? Environment.UserName;
