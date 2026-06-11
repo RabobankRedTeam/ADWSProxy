@@ -20,25 +20,45 @@ namespace ADWSProxy.ADWS
 
         public static string GetMessageString(MessageBuffer messageBuffer)
         {
+            StringBuilder output = new();
+
             XmlWriterSettings settings = new()
             {
                 Indent = true,
-                NewLineOnAttributes = false
+                NewLineOnAttributes = false,
+                ConformanceLevel = ConformanceLevel.Fragment,
+                CheckCharacters = false
             };
-            StringBuilder output = new();
-            using (XmlWriter writer = XmlWriter.Create(output, settings))
+
+            using StringWriter stringWriter = new(output);
+            using XmlWriter writer = XmlWriter.Create(stringWriter, settings);
+            using (XmlDictionaryWriter dictionaryWriter = XmlDictionaryWriter.CreateDictionaryWriter(writer))
             {
-                using XmlDictionaryWriter dictionaryWriter = XmlDictionaryWriter.CreateDictionaryWriter(writer);
                 messageBuffer.CreateMessage().WriteMessage(dictionaryWriter);
+                dictionaryWriter.Flush();
             }
 
             return output.ToString();
         }
 
-        public static void WriteMessageToDebug(this MessageBuffer buffer, ILog logger)
+        public static void WriteMessageToDebug(this MessageBuffer buffer, ILog logger, string title)
         {
-            var data = GetMessageString(buffer);
-            logger.Debug(data);
+            if (logger.IsDebugEnabled)
+            {
+                string sizeTelemetry = $"[Size: {buffer.BufferSize:N0} bytes]";
+                try
+                {
+
+                    var data = GetMessageString(buffer);
+
+                    logger.Debug($"{title}-{sizeTelemetry}\n{data}");
+
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"Failed to write message, {title}, to debug. Size: {sizeTelemetry} bytes", ex);
+                }
+            }
         }
     }
 }

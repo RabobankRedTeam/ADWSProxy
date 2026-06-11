@@ -149,6 +149,5 @@ namespace TestClient
                 log.Info("-----------------------------");
             }
         }
-
     }
 }
