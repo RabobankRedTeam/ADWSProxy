@@ -26,7 +26,7 @@ namespace ADWSProxy.ADWS.Request
         /// <summary>
         /// This is the number of items per page.
         /// </summary>
-        private int MaxElements { get; } = 256;
+        private int MaxElements { get; } = 128;
 
         protected override void OnWriteBodyContents(XmlDictionaryWriter writer)
         {

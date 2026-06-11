@@ -59,9 +59,11 @@ namespace ADWSProxy.ADWS
                         SendTimeout = new TimeSpan(0, 10, 0)
                     };
 
-                    binding.ReaderQuotas.MaxDepth = 10;
-                    binding.ReaderQuotas.MaxStringContentLength = 32768;
-                    binding.ReaderQuotas.MaxArrayLength = 16384;
+                    binding.ReaderQuotas.MaxArrayLength = int.MaxValue;
+                    binding.ReaderQuotas.MaxStringContentLength = int.MaxValue;
+                    binding.ReaderQuotas.MaxDepth = 64;
+                    binding.ReaderQuotas.MaxBytesPerRead = int.MaxValue;
+                    binding.ReaderQuotas.MaxNameTableCharCount = int.MaxValue;
 
                     if (Mode == AdwsEndpoint.Windows)
                     {
@@ -217,11 +219,11 @@ namespace ADWSProxy.ADWS
             var result = new List<DataHolder>();
 
             var messageBuffer = new GetRequest(Instance).CreateBufferedCopy();
-            messageBuffer.WriteMessageToDebug(logger);
+            messageBuffer.WriteMessageToDebug(logger, title: "Get RootDSE Request");
 
             var rootDSEResponse = ResourceClient.Get(messageBuffer.CreateMessage());
             var rootDSEResponseBuffer = rootDSEResponse.CreateBufferedCopy();
-            rootDSEResponseBuffer.WriteMessageToDebug(logger);
+            rootDSEResponseBuffer.WriteMessageToDebug(logger, title: "Get RootDSE Response");
 
             if (rootDSEResponse.IsFault)
             {
@@ -294,11 +296,11 @@ namespace ADWSProxy.ADWS
             try
             {
                 var enumerateRequest = new EnumerateRequest(Instance, filter, dn, scope, fields).CreateBufferedCopy();
-                enumerateRequest.WriteMessageToDebug(logger);
+                enumerateRequest.WriteMessageToDebug(logger, title: "Enumerate Request");
 
                 var enumerateResponse = SearchClient.Enumerate(enumerateRequest.CreateMessage());
                 var enumerateResponseBuffer = enumerateResponse.CreateBufferedCopy();
-                enumerateResponseBuffer.WriteMessageToDebug(logger);
+                enumerateResponseBuffer.WriteMessageToDebug(logger, title: "Enumerate Response");
 
                 if (enumerateResponse.IsFault)
                 {
@@ -318,11 +320,11 @@ namespace ADWSProxy.ADWS
                         logger.Info($"Renewing expiration for {enumerateContext}");
 
                         var renewRequestBuffer = new RenewRequest(Instance, enumerateContext!, DateTime.Now.AddMinutes(25)).CreateBufferedCopy();
-                        renewRequestBuffer.WriteMessageToDebug(logger);
+                        renewRequestBuffer.WriteMessageToDebug(logger, title: "Renew Request");
 
                         var renewResponse = SearchClient.Renew(renewRequestBuffer.CreateMessage());
                         var renewResponseBuffer = renewResponse.CreateBufferedCopy();
-                        renewResponseBuffer.WriteMessageToDebug(logger);
+                        renewResponseBuffer.WriteMessageToDebug(logger, title: "Renew Response");
 
                         if (renewResponse.IsFault)
                         {
@@ -339,11 +341,11 @@ namespace ADWSProxy.ADWS
                         enumerateContextExpires = newEnumerateContextExpires;
                     }
                     var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext!).CreateBufferedCopy();
-                    pullRequest.WriteMessageToDebug(logger);
+                    pullRequest.WriteMessageToDebug(logger, title: "Pull Request");
 
                     var pullResponse = SearchClient.Pull(pullRequest.CreateMessage());
                     var pullResponseBuffer = pullResponse.CreateBufferedCopy();
-                    pullResponseBuffer.WriteMessageToDebug(logger);
+                    pullResponseBuffer.WriteMessageToDebug(logger, title: "Pull Response");
 
                     if (pullResponse.IsFault)
                     {
@@ -369,10 +371,10 @@ namespace ADWSProxy.ADWS
                 {
                     logger.Info($"Releasing enumerateContext: {enumerateContext}");
                     var releaseRequest = new ReleaseRequest(Instance, enumerateContext).CreateBufferedCopy();
-                    releaseRequest.WriteMessageToDebug(logger);
+                    releaseRequest.WriteMessageToDebug(logger, title: "Release Request");
                     var releaseResponse = SearchClient.Release(releaseRequest.CreateMessage());
                     var releaseResponseBuffer = releaseResponse.CreateBufferedCopy();
-                    releaseResponseBuffer.WriteMessageToDebug(logger);
+                    releaseResponseBuffer.WriteMessageToDebug(logger, title: "Release Response");
                     if (releaseResponse.IsFault)
                     {
                         var ex = ADWSException.FromMessageBuffer(releaseResponseBuffer);
