@@ -6,6 +6,7 @@
   <Project Path="ADWSProxy/ADWSProxy.csproj">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
+  <Project Path="BloodHoundConverter/BloodHoundConverter.csproj" Id="95b4f0fa-dc2b-43ca-8994-376ceba77780" />
   <Project Path="TestClient/TestClient.csproj" Id="6914df89-f0a6-415d-8d03-848622b8ef97">
     <Platform Solution="*|x64" Project="x64" />
   </Project>
