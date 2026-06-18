@@ -4,6 +4,7 @@ using log4net.Filter;
 using log4net.Layout;
 using log4net.Repository.Hierarchy;
 using Newtonsoft.Json;
+using System.Text;
 
 namespace TestClient
 {
@@ -16,7 +17,25 @@ namespace TestClient
 
         public static void LogDebug(ILog log, string message, object data)
         {
-            log.Debug($"{message} - {JsonConvert.SerializeObject(data, jsonSettings)}");
+            if (!log.IsDebugEnabled) return;
+
+            try
+            {
+                var sb = new StringBuilder(capacity: 4096);
+                using (var sw = new StringWriter(sb))
+                using (var writer = new JsonTextWriter(sw))
+                {
+                    writer.Formatting = Formatting.Indented;
+                    JsonSerializer serializer = new();
+                    serializer.Serialize(writer, data);
+                }
+
+                log.Debug($"{message} - {sb}");
+            }
+            catch (Exception ex)
+            {
+                log.Debug($"Error occurred while serializing data for debug logging, message {message}", ex);
+            }
         }
 
         public static void InitializeProgrammaticLogging(string logDirectory = "")

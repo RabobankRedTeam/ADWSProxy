@@ -131,7 +131,7 @@ namespace TestClient
                             ADWS_GC = adwsGcResults != null ? new { Values = adwsGcResults, TimeMs = adwsGcTime } : null
                         }
                     };
-                    var fileName = $"{startTime:yyyyMMddhhmmss}_{test.Name}_results.json";
+                    var fileName = $"{startTime:yyyyMMddHHmmss}_{test.Name}_results.json";
                     using (StreamWriter sw = new(fileName))
                     {
                         using JsonTextWriter jw = new(sw) { Formatting = Formatting.Indented };

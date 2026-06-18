@@ -49,6 +49,7 @@ namespace TestClient
 
             try
             {
+                log.Info($"Number of results: {results.Count}");
                 LoggerConfig.LogDebug(log, "Result", results);
             }
             catch (Exception ex)

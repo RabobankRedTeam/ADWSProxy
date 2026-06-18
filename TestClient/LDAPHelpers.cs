@@ -156,6 +156,7 @@ namespace TestClient
                     log.Debug("Some attributes were detected as binary data and have been Base64 encoded in the JSON output");
                 }
 
+                log.Info($"Number of results: {results.Count}");
                 LoggerConfig.LogDebug(log, "Result", serializableResults);
             }
             catch (Exception ex)
