@@ -142,10 +142,10 @@ namespace ADWSProxy.LDAP
             logger.Debug("Handling Search request");
 
             var searchRequest = requestPacket.ChildAttributes.SingleOrDefault(o => o.LdapOperation == LdapOperation.SearchRequest);
-            var dnAttribute = searchRequest?.ChildAttributes.First();
+            var dnAttribute = searchRequest?.ChildAttributes.FirstOrDefault();
             var scopeAttribute = searchRequest?.ChildAttributes[1];
             var filterAttributes = searchRequest?.ChildAttributes.Where(item => item.Class == TagClass.Context);
-            var propertiesAttribute = searchRequest?.ChildAttributes.Last();
+            var propertiesAttribute = searchRequest?.ChildAttributes.LastOrDefault();
 
             var filter = ParseFilters(filterAttributes!);
             var properties = ParseProperties(propertiesAttribute!);
@@ -339,7 +339,7 @@ namespace ADWSProxy.LDAP
                 foreach (var attr in attributes.ChildAttributes)
                 {
                     var attribute = attr.GetValue<string>();
-                    // TODO: Confirm that '+' is not needed
+                    //ADWS does not support +
                     if (!attribute.Equals("+"))
                     {
                         result.Add(attribute);

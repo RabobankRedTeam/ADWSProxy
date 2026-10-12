@@ -20,7 +20,7 @@ namespace BloodHoundConverter
 
             LevelRangeFilter debugAndAboveFilter = new()
             {
-                LevelMin = log4net.Core.Level.Debug,
+                LevelMin = log4net.Core.Level.Info,
                 LevelMax = log4net.Core.Level.Fatal
             };
             debugAndAboveFilter.ActivateOptions();

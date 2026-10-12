@@ -28,7 +28,7 @@ namespace ADWSProxy.ADWS.Request
             writer.WriteEndElement();
             writer.WriteEndElement();
 
-            if (Attributes != null && Attributes.Count > 0)
+            if (Attributes?.Count > 0)
             {
                 writer.WriteStartElement("Selection", "http://schemas.microsoft.com/2008/1/ActiveDirectory");
                 writer.WriteAttributeString("Dialect", "http://schemas.microsoft.com/2008/1/ActiveDirectory/Dialect/XPath-Level-1");

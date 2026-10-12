@@ -13,7 +13,7 @@ namespace TestClient
         internal List<ResultHolder> ExecuteAdws(string baseDn, string filter, string scope, List<string> attributes)
         {
             var results = new List<ResultHolder>();
-            Connection.Enumerate(baseDn, filter, attributes, scope.ToString(), result =>
+            Connection.Enumerate(baseDn, filter, attributes, scope, result =>
             {
                 var (dn, dataHolders) = result;
                 results.Add(new ResultHolder

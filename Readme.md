@@ -142,5 +142,5 @@ Detailed research into ADWS exploitation and the architecture of this tool is av
 
 ## Test client
 
-A test client that can run queries via the following methods; ADWS, ADWS-Global Catalog, LDAP(S), and LDAP(S)-Global Catalogis available. A sample [tests.json](/TestClient/tests.json) file is included with the repository.
+A test client that can run queries via the following methods; ADWS, ADWS-Global Catalog, LDAP(S), and LDAP(S)-Global Catalogis available. A sample [tests.json](TestClient/tests.json) file is included with the repository.
 Note that the test client has only been tested with Server 2022 and may not be fully compatible with Server 2025.

@@ -79,6 +79,7 @@ namespace ADWSProxy
             }
 
             LoggerConfig.ConfigureLogger(options.ConsoleLogLevel, options.LogDirectory);
+            logger.Info($"Starting ADWSProxy v{AppInfo.GetVersion()}");
 
             logger.Info("Starting ADWSproxy");
 
@@ -101,7 +102,7 @@ namespace ADWSProxy
                 var gc = options.GlobalCatalog;
                 if (string.IsNullOrWhiteSpace(gc))
                 {
-                    logger.Info($"No Global Catalog server defined so no Global Catalog listener has been started");
+                    logger.Info("No Global Catalog server defined so no Global Catalog listener has been started");
                 }
                 else
                 {
@@ -122,7 +123,7 @@ namespace ADWSProxy
                     {
                         if (StartDNS(options.ExitOnDNSStartError, options.LDAPPort, options.GCPort, options.HostIP))
                         {
-                            logger.Info($"Succesfully started the DNSListener");
+                            logger.Info("Succesfully started the DNSListener");
                         }
                         else
                         {
@@ -146,7 +147,7 @@ namespace ADWSProxy
                     }
                     else
                     {
-                        logger.Info($"Trying to get RootDSE via LDAPListener");
+                        logger.Info("Trying to get RootDSE via LDAPListener");
                         var rootDSE = LDAPListener.ADWSConnection.GetRootDSE();
                         logger.Info("Succesfully got RootDSE via LDAPListener");
                         logger.Debug($"LDAP RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
@@ -166,7 +167,7 @@ namespace ADWSProxy
                         }
                         else
                         {
-                            logger.Info($"Trying to get RootDSE via GCListener");
+                            logger.Info("Trying to get RootDSE via GCListener");
                             var rootDSE = GCListener.ADWSConnection.GetRootDSE();
                             logger.Info("Succesfully got RootDSE via GCListener");
                             logger.Debug($"GC RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");

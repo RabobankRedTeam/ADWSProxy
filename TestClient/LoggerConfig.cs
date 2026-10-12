@@ -8,13 +8,8 @@ using System.Text;
 
 namespace TestClient
 {
-    internal class LoggerConfig
+    internal static class LoggerConfig
     {
-        private static readonly JsonSerializerSettings jsonSettings = new()
-        {
-            Formatting = Formatting.Indented
-        };
-
         public static void LogDebug(ILog log, string message, object data)
         {
             if (!log.IsDebugEnabled) return;

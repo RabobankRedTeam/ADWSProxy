@@ -84,7 +84,7 @@ namespace TestClient
             var sdControl = new SecurityDescriptorFlagControl(SecurityMasks.Dacl | SecurityMasks.Owner | SecurityMasks.Group);
             request.Controls.Add(sdControl);
 
-            int pageSize = 500;
+            const int pageSize = 500;
             PageResultRequestControl pageRequestControl = new(pageSize);
             request.Controls.Add(pageRequestControl);
 
@@ -92,6 +92,15 @@ namespace TestClient
             while (true)
             {
                 var response = (SearchResponse)connection.SendRequest(request);
+                if (response.ResultCode == ResultCode.Referral)
+                {
+                    log.Info($"Received referral to: {string.Join(',', response.Referral.Select(x => x.AbsoluteUri))}");
+                }
+                if (!string.IsNullOrWhiteSpace(response.ErrorMessage))
+                {
+                    log.Error($"Received error: {response.ErrorMessage}");
+                }
+                log.Debug($"Received {response.Entries.Count} entries in current page, cookie: {Convert.ToBase64String(pageRequestControl.Cookie)}");
                 allResults.AddRange(response.Entries.Cast<SearchResultEntry>());
                 var pageResponseControl = response.Controls.OfType<PageResultResponseControl>().FirstOrDefault();
                 if (pageResponseControl == null || pageResponseControl.Cookie.Length == 0)
@@ -101,12 +110,12 @@ namespace TestClient
                 pageRequestControl.Cookie = pageResponseControl.Cookie;
             }
 
-
             List<ResultHolder> results = [];
             try
             {
+                var strictUtf8 = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
                 var jsonOutputHasBase64Content = false;
-                var serializableResults = allResults.Select(e => new
+                var serializableResults = allResults.ConvertAll(e => new
                 {
                     e.DistinguishedName,
                     Attributes = e.Attributes.AttributeNames.Cast<string>().ToDictionary(
@@ -118,32 +127,39 @@ namespace TestClient
                                 return string.Empty;
                             }
 
-                            // Look for non-printable control characters to determine if it is raw binary data
-                            bool isPrintableText = true;
+                            // Fast Control Character Check
+                            bool isPrintable = true;
                             for (int i = 0; i < byteArray.Length; i++)
                             {
                                 byte b = byteArray[i];
-                                // Flags true binary structures if we see bytes below space (32) 
-                                // that aren't common formatting characters like horizontal tabs or line feeds
-                                if (b < 32 && b != 9 && b != 10 && b != 13)
+                                // Catch ASCII control characters (< 32 except tab/LF/CR) and non-ASCII bytes (>= 127)
+                                if ((b < 32 && b != 9 && b != 10 && b != 13) || b >= 127)
                                 {
-                                    isPrintableText = false;
-                                    jsonOutputHasBase64Content = true;
+                                    isPrintable = false;
                                     break;
                                 }
                             }
-
-                            if (isPrintableText)
+                            string resultString = string.Empty;
+                            if (isPrintable)
                             {
-                                string decodedString = System.Text.Encoding.UTF8.GetString(byteArray);
-                                return decodedString;
+                                try
+                                {
+                                    resultString = strictUtf8.GetString(byteArray);
+                                }
+                                catch
+                                {
+                                    isPrintable = false;
+                                }
                             }
-
-                            // If it is an ntSecurityDescriptor or objectGUID block, translate it to Base64
-                            return Convert.ToBase64String(byteArray);
+                            if (!isPrintable)
+                            {
+                                jsonOutputHasBase64Content = true;
+                                resultString = Convert.ToBase64String(byteArray);
+                            }
+                            return resultString;
                         }).ToList()
                     )
-                }).ToList();
+                });
 
                 results = [.. serializableResults.Select(r => new ResultHolder
                 {

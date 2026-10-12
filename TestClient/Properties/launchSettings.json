@@ -5,7 +5,7 @@
     },
     "Container (Dockerfile)": {
       "commandName": "Docker",
-      "commandLineArgs": "-u USER -p PASSWORD -d DOMAIN"
+      "commandLineArgs": "-u labadmin -p BadBl00d -d badblood.test"
     }
   }
 }

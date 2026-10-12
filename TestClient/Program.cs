@@ -7,6 +7,7 @@ using TestClient;
 ILog log = LogManager.GetLogger(typeof(Program));
 
 LoggerConfig.InitializeProgrammaticLogging();
+log.Info($"Starting TestClient v{AppInfo.GetVersion()}");
 
 if (args.Any(a => a.Equals("--help", StringComparison.OrdinalIgnoreCase) || a.Equals("-h", StringComparison.OrdinalIgnoreCase)))
 {
@@ -68,11 +69,11 @@ if (jsonString.Contains("{{LOGONSERVER}}"))
         log.Error("Current LOGONSERVER is empty. {{LOGONSERVER}} placeholder can not be replaced");
         return;
     }
-    while(currentLogonServer.StartsWith("\\\\"))
+    while (currentLogonServer.StartsWith("\\\\"))
     {
         currentLogonServer = currentLogonServer[2..];
     }
-    log.Info("Replacing {{LOGONSERVER}} placeholder with current logonserver: " +  currentLogonServer);
+    log.Info("Replacing {{LOGONSERVER}} placeholder with current logonserver: " + currentLogonServer);
     jsonString = jsonString.Replace("{{LOGONSERVER}}", currentLogonServer);
 }
 
