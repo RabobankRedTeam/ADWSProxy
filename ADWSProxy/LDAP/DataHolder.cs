@@ -1,19 +1,16 @@
 ﻿using Flexinets.Ldap.Core;
-using System;
 
 namespace ADWSProxy.LDAP
 {
-    internal class DataHolder
+    public class DataHolder(string name, object data, UniversalDataType? dataType)
     {
-        public DataHolder(string name, object data, UniversalDataType? dataType)
-        {
-            Name = name ?? throw new ArgumentNullException(nameof(name));
-            Data = data ?? throw new ArgumentNullException(nameof(data));
-            DataType = dataType ?? throw new ArgumentNullException(nameof(DataType));
-        }
+        public object Data { get; } = data;
+        public UniversalDataType DataType { get; } = dataType ?? throw new ArgumentNullException(nameof(dataType));
+        public string Name { get; } = name;
 
-        public object Data { get; }
-        public UniversalDataType DataType { get; }
-        public string Name { get; }
+        public override string ToString()
+        {
+            return $"Name:{Name}, DataType:{DataType}, Data:{Data}";
+        }
     }
 }

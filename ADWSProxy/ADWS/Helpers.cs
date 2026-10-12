@@ -20,27 +20,72 @@ namespace ADWSProxy.ADWS
 
         public static string GetMessageString(MessageBuffer messageBuffer)
         {
-            XmlWriterSettings settings = new XmlWriterSettings()
+            try
             {
-                Indent = true,
-                NewLineOnAttributes = false
-            };
-            StringBuilder output = new StringBuilder();
-            using (XmlWriter writer = XmlWriter.Create(output, settings))
-            {
+                StringBuilder output = new();
+
+                XmlWriterSettings settings = new()
+                {
+                    Indent = true,
+                    NewLineOnAttributes = false,
+                    ConformanceLevel = ConformanceLevel.Fragment,
+                    CheckCharacters = false
+                };
+
+                var message = messageBuffer.CreateMessage();
+                if (message == null || message.IsEmpty)
+                {
+                    return "[Empty Message]";
+                }
+                using StringWriter stringWriter = new(output);
+                using XmlWriter writer = XmlWriter.Create(stringWriter, settings);
                 using (XmlDictionaryWriter dictionaryWriter = XmlDictionaryWriter.CreateDictionaryWriter(writer))
                 {
-                    messageBuffer.CreateMessage().WriteMessage(dictionaryWriter);
+                    message.WriteMessage(dictionaryWriter);
+                    dictionaryWriter.Flush();
+                }
+
+                return output.ToString();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    using MemoryStream ms = new();
+                    using var writer = XmlDictionaryWriter.CreateTextWriter(ms, Encoding.UTF8);
+                    messageBuffer.CreateMessage().WriteMessage(writer);
+                    writer.Flush();
+
+                    byte[] rawBytes = ms.ToArray();
+                    string rawText = Encoding.UTF8.GetString(rawBytes);
+
+                    return rawText.Contains('\0') || rawText.Any(c => char.IsControl(c) && c != '\r' && c != '\n' && c != '\t')
+                        ? $"[Malformed XML Payload - Raw Base64 Dump]: {Convert.ToBase64String(rawBytes)}"
+                        : $"[Raw Fallback Text]: {rawText}";
+                }
+                catch (Exception fallbackEx)
+                {
+                    return $"[Critical Serialization Failure]: Could not interpret message buffer. Native Error: {ex.Message}. Fallback Error: {fallbackEx.Message}";
                 }
             }
-
-            return output.ToString();
         }
 
-        public static void WriteMessageToDebug(this MessageBuffer buffer, ILog logger)
+        public static void WriteMessageToDebug(this MessageBuffer buffer, ILog logger, string title)
         {
-            var data = GetMessageString(buffer);
-            logger.Debug(data);
+            if (logger.IsDebugEnabled)
+            {
+                string sizeTelemetry = $"[Size: {buffer.BufferSize:N0} bytes]";
+                try
+                {
+                    var data = GetMessageString(buffer);
+
+                    logger.Debug($"{title}-{sizeTelemetry}\n{data}");
+                }
+                catch (Exception ex)
+                {
+                    logger.Error($"Failed to write message, {title}, to debug. Size: {sizeTelemetry} bytes", ex);
+                }
+            }
         }
     }
 }

@@ -1,65 +1,121 @@
-﻿using CommandLine;
-using System.Net;
+﻿using System.Net;
 
 namespace ADWSProxy
 {
-    internal class CommandLineOptions
+    public class CommandLineOptions
     {
-        [Option("adwsdcport", Required = false, Default = 9389, HelpText = "The ADWS port to proxy to on the domain controller")]
-        public int ADWSDCPort { get; set; }
+        private string? _globalCatalog;
+        private string? _domainController;
+        
+        public int ADWSDCPort { get; set; } = 9389;
+        public int ADWSGCPort { get; set; } = 9389;
+        public string ConsoleLogLevel { get; set; } = "INFO";
+        public string? Domain { get; set; }
 
-        [Option("adwsgcport", Required = false, Default = 9389, HelpText = "The ADWS port to proxy to on the global catalog")]
-        public int ADWSGCPort { get; set; }
+        public string? DomainController
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(_domainController))
+                {
+                    throw new ArgumentException($"--domaincontroller '{_domainController}' must be a full FQDN");
+                }
+                return _domainController;
+            }
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    throw new ArgumentException($"--domaincontroller is required");
+                }
+                _domainController = value;
+            }
+        }
 
-        [Option("consoleloglevel", Required = false, Default = "INFO", HelpText = "Set the log level for the console output")]
-        public string ConsoleLogLevel { get; set; }
+        public bool ExitOnDNSStartError { get; set; } = false;
+        public ushort GCPort { get; set; } = 3268;
 
-        [Option("dnsport", Required = false, Default = 53, HelpText = "The DNS port to proxy from")]
-        public int DnsPort { get; set; }
+        public string? GlobalCatalog
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(_globalCatalog))
+                {
+                    return null;
+                }
+                return _globalCatalog;
+            }
 
-        [Option('D', "domain", Required = false, Default = null, HelpText = "The domain to authenticate to ADWS")]
-        public string Domain { get; set; }
+            set
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    _globalCatalog = null;
+                }
+                _globalCatalog = value;
+            }
+        }
 
-        [Option("domaincontroller", Required = true, HelpText = "The domain controller to proxy to")]
-        public string DomainController { get; set; }
+        public string? HostIP { get; set; }
 
-        [Option("exitondnsstarterror", Required = false, Default = true, HelpText = "Exit the application if the DNS port is already in use")]
-        public bool? ExitOnDNSStartError { get; set; }
+        private string _listenIP = "0.0.0.0";
 
-        [Option("gcinstance", Required = false, Default = "ldap:3268", HelpText = "The GC instance within ADWS")]
-        public string GCInstance { get; set; }
+        public string ListenIP
+        {
+            get => _listenIP;
+            set
+            {
+                if (IPAddress.TryParse(value, out var address) &&
+                    address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                {
+                    _listenIP = value;
+                }
+                else
+                {
+                    throw new ArgumentException($"--hostip '{value}' is not a valid IPv4 address");
+                }
+            }
+        }
+        public bool OnlyUseGCBackend { get; set; } = false;
+        public ushort LDAPPort { get; set; } = 389;
+        public string LogDirectory { get; set; } = ".";
+        public string? Password { get; set; }
+        public string? Username { get; set; }
+        public AdwsEndpoint Mode { get; set; } = AdwsEndpoint.Windows;
+        public bool SkipDns { get; set; } = false;
+        public bool SkipRootDSE { get; set; } = false;
 
-        [Option("gcport", Required = false, Default = (ushort)3268, HelpText = "The GC port to proxy from")]
-        public ushort GCPort { get; set; }
 
-        [Option("globalcatalog", Required = false, HelpText = "The global catalog to proxy to")]
-        public string GlobalCatalog { get; set; }
-
-        [Option("ldapinstance", Required = false, Default = "ldap:389", HelpText = "The LDAP instance within ADWS")]
-        public string LDAPInstance { get; set; }
-
-        [Option("ldapport", Required = false, Default = (ushort)389, HelpText = "The LDAP port to proxy from")]
-        public ushort LDAPPort { get; set; }
-
-        [Option("logdirectory", Required = false, Default = ".", HelpText = "The log directory to output runtime logs. Defaults to the current working directory.")]
-        public string LogDirectory { get; set; }
-
-        [Option('p', "password", Required = false, Default = null, HelpText = "The password to authenticate to ADWS")]
-        public string Password { get; set; }
-
-        [Option('u', "username", Required = false, Default = null, HelpText = "The username to authenticate to ADWS")]
-        public string Username { get; set; }
-
-        [Option("usewindowsauth", Required = false, Default = true, HelpText = "Use Windows Authentication (default) or Username/Password with TLS")]
-        public bool? UseWindowsAuth { get; set; }
-
-        public NetworkCredential GetNetworkCredential()
+        public NetworkCredential? GetNetworkCredential()
         {
             if (Username == null && Password == null && Domain == null) return null;
 
-            if (Username == null || Password == null || Domain == null) throw new System.ArgumentException("Username, Password and Domain all need to be used when one value is entered");
+            return (Username == null || Password == null || Domain == null)
+                ? throw new ArgumentException("Username, Password, and Domain must all be provided if any one is entered")
+                : new NetworkCredential(Username, Password, Domain);
+        }
 
-            return new NetworkCredential(Username, Password, Domain);
+        public static void ShowHelp()
+        {
+            Console.WriteLine("ADWSProxy - Active Directory Web Services Proxy");
+            Console.WriteLine("Created by Rabobank Red Team");
+            Console.WriteLine("==============================================");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --domaincontroller <fqdn>    (Required) The DC to proxy to");
+            Console.WriteLine("  --globalcatalog <fqdn>       The GC to proxy to");
+            Console.WriteLine("  --ldapport <port>            LDAP port to listen on (Default: 389)");
+            Console.WriteLine("  --gcport <port>              GC port to listen on (Default: 3268)");
+            Console.WriteLine("  --adwsdcport <port>          Target ADWS DC port (Default: 9389)");
+            Console.WriteLine("  --hostip <ip>                The IP used for the DNS responses (Default: IPv4 local IP)");
+            Console.WriteLine("  --listenip <ip>              The IP to listen on for LDAP/GC requests (Default: 0.0.0.0)");
+            Console.WriteLine("  --mode <Windows|Username>    ADWS Endpoint Mode (Default: Windows)");
+            Console.WriteLine("  --skipdns <true|false>       Skip starting the DNS listener");
+            Console.WriteLine("  --skiprootdse <true|false>   Skip starting the DNS listener");
+            Console.WriteLine("  --username <user>            Username for ADWS authentication");
+            Console.WriteLine("  --password <pass>            Password for ADWS authentication");
+            Console.WriteLine("  --domain <domain>            Domain for ADWS authentication");
+            Console.WriteLine("  --help                       Show this help message");
+            Console.WriteLine();
         }
     }
 }

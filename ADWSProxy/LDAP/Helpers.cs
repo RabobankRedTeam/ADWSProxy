@@ -1,12 +1,75 @@
 ﻿using Flexinets.Ldap.Core;
-using System.Collections.Generic;
-using System.Linq;
+using log4net;
 using System.Reflection;
+using System.Security.Principal;
+using System.Text;
 
 namespace ADWSProxy.LDAP
 {
     internal static class Helpers
     {
+        private static readonly ILog logger = LogHelper.GetLogger(typeof(Helpers));
+
+        public static string ConvertByteSidToStringSid(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length < 8)
+                return string.Empty;
+
+            // 1. Generate the SID string using the cross-platform manual parser
+            string manualSid = ParseSidManually(bytes);
+
+            // 2. Perform Windows-specific validation if requested
+            if (logger.IsDebugEnabled && OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    var nativeSid = new SecurityIdentifier(bytes, 0).ToString();
+
+                    if (!string.Equals(manualSid, nativeSid, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Generate Base64 for easier external debugging
+                        string base64 = Convert.ToBase64String(bytes);
+
+                        logger.Warn($"SID Mismatch! Manual: {manualSid} | Native: {nativeSid} | Raw Base64: {base64}");
+
+                        return nativeSid;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    string base64 = Convert.ToBase64String(bytes);
+                    logger.Debug($"Native SID validation failed. Manual: {manualSid} | Base64: {base64}", ex);
+                }
+            }
+
+            return manualSid;
+        }
+        private static string ParseSidManually(byte[] bytes)
+        {
+            byte revision = bytes[0];
+            int count = bytes[1];
+
+            long authority = 0;
+            for (int i = 2; i <= 7; i++)
+            {
+                authority = (authority << 8) | bytes[i];
+            }
+
+            StringBuilder sb = new();
+            sb.Append($"S-{revision}-{authority}");
+
+            for (int i = 0; i < count; i++)
+            {
+                int offset = 8 + (i * 4);
+                if (offset + 4 > bytes.Length) break;
+
+                uint subAuthority = BitConverter.ToUInt32(bytes, offset);
+                sb.Append($"-{subAuthority}");
+            }
+
+            return sb.ToString();
+        }
+
         public static LdapAttribute AddItemsToResponse(this LdapAttribute response, List<DataHolder> items)
         {
             var list = new LdapAttribute(UniversalDataType.Sequence);
@@ -31,9 +94,9 @@ namespace ADWSProxy.LDAP
             return response;
         }
 
-        public static byte[] GetRawValue(this LdapAttribute ldapAttribute)
+        public static byte[]? GetRawValue(this LdapAttribute ldapAttribute)
         {
-            return (byte[])typeof(LdapAttribute).GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(ldapAttribute);
+            return typeof(LdapAttribute).GetField("Value", BindingFlags.Instance | BindingFlags.NonPublic)?.GetValue(ldapAttribute) as byte[];
         }
 
         /// <summary>
@@ -42,8 +105,7 @@ namespace ADWSProxy.LDAP
         public static IEnumerable<byte> NTLMMatchedDN()
         {
             return
-                new List<byte>
-                    {
+                [
                         0x4e,0x54,0x4c,0x4d,0x53,0x53,0x50,0x00, // NTLMSSP\0
                         0x02,0x00,0x00,0x00, // NTLMSSP_CHALLENGE
                         // Target Name:
@@ -104,7 +166,7 @@ namespace ADWSProxy.LDAP
                         0x00,0x00, // Item Length: 0
                         // End attribute
                         0x04,0x00 // End of bind response
-                    };
+                    ];
         }
     }
 }

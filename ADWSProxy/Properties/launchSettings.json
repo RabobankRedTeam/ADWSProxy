@@ -1,0 +1,13 @@
+{
+  "profiles": {
+    "ADWSProxy": {
+      "commandName": "Project",
+      "commandLineArgs": "--domaincontroller dc01 --globalcatalog dc01 --consoleloglevel DEBUG"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "DockerfileRunArguments": "-p 389:389 -p 3268:3268 -p 53:53 --hostname ADWSProxy",
+      "commandLineArgs": "--hostip 192.168.20.11 -u labadmin -p Badbl00d -D BadBlood.test --domaincontroller TestDC.badblood.test --globalcatalog TestDC.badblood.test --consoleloglevel DEBUG"
+    }
+  }
+}

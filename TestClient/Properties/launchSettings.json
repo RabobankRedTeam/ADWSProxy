@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "TestClient": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "commandLineArgs": "-u labadmin -p BadBl00d -d badblood.test"
+    }
+  }
+}

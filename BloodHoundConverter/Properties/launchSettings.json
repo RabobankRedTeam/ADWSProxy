@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "BloodHoundConverter": {
+      "commandName": "Project",
+      "commandLineArgs": "\"../../../../TestClient/bin/Debug/net8.0/20260609032447_Entire domain_results.json\""
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
