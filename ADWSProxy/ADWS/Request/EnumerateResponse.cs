@@ -1,16 +1,11 @@
-﻿using System;
-using System.ServiceModel.Channels;
+﻿using System.ServiceModel.Channels;
 using System.Xml;
 
 namespace ADWSProxy.ADWS.Request
 {
-    internal class EnumerateResponse : ADWSResponse
+    internal class EnumerateResponse(Message response) : ADWSResponse(response)
     {
-        public EnumerateResponse(Message response) : base(response)
-        {
-        }
-
-        public string EnumerateContext { get; set; }
+        public string? EnumerateContext { get; set; }
         public DateTime Expiration { get; set; }
 
         protected override void OnReadBodyContents(XmlDictionaryReader reader)
@@ -20,13 +15,13 @@ namespace ADWSProxy.ADWS.Request
             {
                 if (reader.NodeType == XmlNodeType.Element)
                 {
-                    if (reader.LocalName == "Expires")
+                    if (reader.LocalName.Equals("Expires", StringComparison.OrdinalIgnoreCase))
                     {
                         var expirationString = reader.ReadElementContentAsString();
 
                         Expiration = XmlConvert.ToDateTime(expirationString, XmlDateTimeSerializationMode.Utc);
                     }
-                    if (reader.LocalName == "EnumerationContext")
+                    if (reader.LocalName.Equals("EnumerationContext", StringComparison.OrdinalIgnoreCase))
                     {
                         EnumerateContext = reader.ReadElementContentAsString();
                     }

@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "TestClient": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker",
+      "commandLineArgs": "-u recon -p <password> -d corp.internal"
+    }
+  }
+}

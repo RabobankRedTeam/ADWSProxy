@@ -1,6 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.DirectoryServices.Protocols;
+﻿using System.DirectoryServices.Protocols;
 using System.Xml;
 
 namespace ADWSProxy.ADWS.Request
@@ -18,17 +16,17 @@ namespace ADWSProxy.ADWS.Request
 
         public override string Action => "http://schemas.xmlsoap.org/ws/2004/09/enumeration/Pull";
 
-        private List<DirectoryControl> Controls { get; } = new List<DirectoryControl>()
-        {
-            new DirectoryControl("1.2.840.113556.1.4.801", new byte[] { 0x30, 0x84, 0x00, 0x00, 0x00, 0x03, 0x02, 0x01, 0x07 }, true, true)
-        };
+        private List<DirectoryControl> Controls { get; } =
+        [
+            new("1.2.840.113556.1.4.801", [0x30, 0x84, 0x00, 0x00, 0x00, 0x03, 0x02, 0x01, 0x07], true, true)
+        ];
 
         private string EnumerationContext { get; }
 
         /// <summary>
         /// This is the number of items per page.
         /// </summary>
-        private int MaxElements { get; } = 256;
+        private int MaxElements { get; } = 128;
 
         protected override void OnWriteBodyContents(XmlDictionaryWriter writer)
         {
@@ -53,7 +51,7 @@ namespace ADWSProxy.ADWS.Request
                     if (buffer != null && buffer.Length > 0)
                     {
                         writer.WriteStartElement("controlValue", "http://schemas.microsoft.com/2008/1/ActiveDirectory");
-                        string prefix = writer.LookupPrefix("http://www.w3.org/2001/XMLSchema");
+                        string? prefix = writer.LookupPrefix("http://www.w3.org/2001/XMLSchema");
                         writer.WriteAttributeString("type", "http://www.w3.org/2001/XMLSchema-instance", $"{prefix}:base64Binary");
                         writer.WriteBase64(buffer, 0, buffer.Length);
                         writer.WriteEndElement();

@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "BloodHoundConverter": {
+      "commandName": "Project",
+      "commandLineArgs": "C:\\Users\\user\\Downloads\\ADExport"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}

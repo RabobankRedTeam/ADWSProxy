@@ -1,0 +1,70 @@
+{
+  "Server": "{{LOGONSERVER}}",
+  "Queries": [
+    {
+      "Name": "T1 - Domain context",
+      "Description": "Standard domain partition sweep targeting the base domain DN for standard AD objects.",
+      "TargetOUs": [ "{{DOMAIN_DN}}" ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [ "*" ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "T2 - Configuration context",
+      "Description": "Targets the Configuration partition.",
+      "TargetOUs": [ "CN=Configuration,{{DOMAIN_DN}}" ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [ "*" ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "T3 - Full RootDSE Domain Expansion Sweep",
+      "Description": "Filtered view: expands to only the naming contexts under the current domain (DNs ending in the domain DN), excluding other forest domains.",
+      "TargetOUs": [ "{{allContexts:{{DOMAIN_DN}}}}" ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [ "*" ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "T4 - Full GC Sweep",
+      "Description": "Uses Global Catalog to perform forest-wide object discovery via the Partial Attribute Set",
+      "TargetOUs": [ "{{allContexts}}" ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [ "*" ],
+      "Engines": [
+        "ADWS-GC",
+        "LDAP-GC",
+        "LDAPS-GC"
+      ]
+    },
+    {
+      "Name": "T5 - Full RootDSE Expansion Sweep",
+      "Description": "Full view: resolves every naming context across the forest (RootDSE plus the Partitions container), including other in-forest domains, and runs against every partition.",
+      "TargetOUs": [ "{{allContexts}}" ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [ "*" ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    }
+  ]
+}

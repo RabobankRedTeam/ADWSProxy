@@ -1,0 +1,4 @@
+# Keep the regeneration script; ignore everything dotnet-svcutil produces here.
+*
+!.gitignore
+!Regenerate.ps1

@@ -4,7 +4,6 @@ using log4net.Core;
 using log4net.Filter;
 using log4net.Layout;
 using log4net.Repository.Hierarchy;
-using System.IO;
 
 namespace ADWSProxy
 {
@@ -12,7 +11,7 @@ namespace ADWSProxy
     {
         public static void ConfigureLogger(string ConsoleFilterLevel, string LogDirectory)
         {
-            var hierarchy = (Hierarchy)LogManager.GetRepository();
+            var hierarchy = (Hierarchy)LogManager.GetRepository(typeof(LoggerConfig).Assembly);
 
             // Pattern layout
             var patternLayout = new PatternLayout
