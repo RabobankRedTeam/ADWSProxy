@@ -47,7 +47,11 @@ namespace ADWSProxy.ADWS.Request
                                 if (reader.NodeType == XmlNodeType.Text)
                                 {
                                     var nodeValue = reader.Value;
-                                    errors.Add(elementName, nodeValue);
+                                    // A fault detail may repeat an element name; append instead of
+                                    // Add so a duplicate key cannot throw and mask the real fault.
+                                    errors[elementName] = errors.TryGetValue(elementName, out var existing)
+                                        ? $"{existing}; {nodeValue}"
+                                        : nodeValue;
                                 }
                                 if (reader.NodeType == XmlNodeType.EndElement && !reader.LocalName.Equals("value", StringComparison.OrdinalIgnoreCase))
                                 {

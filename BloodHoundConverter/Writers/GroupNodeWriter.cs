@@ -12,8 +12,8 @@ namespace BloodHoundConverter.Writers
             writer.WriteStartObject();
             WriteProperties(writer, context);
             WriteBaseNodeValues(writer, context, context.ObjectSid);
-            AceParser.WriteAcesFromDescriptor(writer, context);
-            WriteContaineredBy(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.Group);
+            WriteContainedBy(writer, context);
 
             var members = context.GetAttributeValues("member")?.Select(x => BloodHoundConverter.DnToIdentityMap.TryGetValue(x, out var identity) ? identity : null).Where(x => x != null) ?? [];
 
@@ -46,8 +46,12 @@ namespace BloodHoundConverter.Writers
 
             WriteBasePropertyValues(writer, context);
 
-            WritePropertyBool(writer, "admincount", null);
-            WriteProperty(writer, "groupscope", long.TryParse(context.GetFirstAttributeValue("grouptype"), out long groupType) ? GetGroupScope(groupType) : null);
+            if (long.TryParse(context.GetFirstAttributeValue("grouptype"), out long groupType))
+            {
+                // High bit (0x80000000) = security-enabled; otherwise it is a distribution group.
+                WriteProperty(writer, "securityenabled", (groupType & 0x80000000L) != 0);
+                WriteProperty(writer, "groupscope", GetGroupScope(groupType));
+            }
 
             writer.WriteEndObject();
         }

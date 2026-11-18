@@ -8,8 +8,11 @@ namespace BloodHoundConverter
     {
         private static readonly ILog log = LogManager.GetLogger(typeof(Helpers));
         private static bool HasNotifiedWindowsOnly = false;
-        private const string WindowsOnlyMessage = "Part of the funcationlity is Windows only, more data will be processed when it's processed on a Windows machine";
-        public static readonly List<string> GeneratedGuidsFor = [];
+        private const string WindowsOnlyMessage = "Part of the functionality is Windows only, more data will be processed when it's processed on a Windows machine";
+        // DNs of objects we synthesized a deterministic GUID for. A HashSet because ResolveGuid can
+        // run more than once per object (mapping pass + node-context creation); dedup keeps the count
+        // and the saved file at one entry per object.
+        public static readonly HashSet<string> GeneratedGuidsFor = new(StringComparer.OrdinalIgnoreCase);
 
         public static string ObjectTypeToString(ObjectType? objectType) => objectType switch
         {
@@ -73,37 +76,6 @@ namespace BloodHoundConverter
             // Read the file time ticks from the raw byte layout
             long ticks = BitConverter.ToInt64(bytes, 0);
             return ParseAdTimePeriod(ticks);
-        }
-
-        public static string ConvertCertificateNameFlags(int flags)
-        {
-            List<string> options = [];
-            if ((flags & 0x00000001) != 0) options.Add("ENROLLEE_SUPPLIES_SUBJECT");
-            if ((flags & 0x00400000) != 0) options.Add("SUBJECT_ALT_REQUIRE_UPN");
-            if ((flags & 0x00800000) != 0) options.Add("SUBJECT_ALT_REQUIRE_DNS");
-            if ((flags & 0x01000000) != 0) options.Add("SUBJECT_REQUIRE_DIRECTORY_PATH");
-
-            return options.Count > 0 ? string.Join(", ", options) : "None";
-        }
-
-        public static string NameFromDn(string dn)
-        {
-            if (string.IsNullOrWhiteSpace(dn)) return string.Empty;
-            try
-            {
-                var cnComponent = dn.Split(',')
-                    .Select(part => part.Trim())
-                    .FirstOrDefault(part => part.StartsWith("CN=", StringComparison.OrdinalIgnoreCase));
-                if (cnComponent != null)
-                {
-                    return cnComponent[3..].Trim();
-                }
-            }
-            catch
-            {
-                log.Debug($"Failed to extract CN from DN: {dn}");
-            }
-            return string.Empty;
         }
 
         public static string ResolveGuid(string? value, string dn, out bool isDeterministic)
@@ -191,6 +163,27 @@ namespace BloodHoundConverter
             return null;
         }
 
+        /// <summary>
+        /// Converts an Active Directory Integer8 timestamp (FILETIME: 100ns ticks since 1601-01-01 UTC,
+        /// used by pwdLastSet, lastLogon, lastLogonTimestamp, etc.) to Unix epoch seconds.
+        /// Returns null for the "not set" (0) and "never" (long.MaxValue) sentinels.
+        /// </summary>
+        public static long? FileTimeToUnixEpoch(string? rawFileTime)
+        {
+            if (string.IsNullOrWhiteSpace(rawFileTime)) return null;
+            if (!long.TryParse(rawFileTime, out long ticks)) return null;
+            if (ticks <= 0 || ticks == long.MaxValue) return null;
+
+            try
+            {
+                return ((DateTimeOffset)DateTime.FromFileTimeUtc(ticks)).ToUnixTimeSeconds();
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
+        }
+
         public static string? ParseSid(string? value)
         {
             if (string.IsNullOrWhiteSpace(value)) return null;
@@ -234,6 +227,84 @@ namespace BloodHoundConverter
             }
 
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Builds a primary-group SID from an object SID and its primaryGroupID RID. Built-in local
+        /// groups (RID 540-580) resolve to S-1-5-32-RID; otherwise the object SID's domain prefix is
+        /// combined with the RID. Single source of truth for all node writers.
+        /// </summary>
+        public static string CalculateGroupSid(string? objectSid, string? primaryGroupRid)
+        {
+            if (string.IsNullOrWhiteSpace(objectSid) || string.IsNullOrWhiteSpace(primaryGroupRid))
+                return string.Empty;
+
+            if (int.TryParse(primaryGroupRid, out int rid) && rid >= 540 && rid <= 580)
+                return $"S-1-5-32-{primaryGroupRid}";
+
+            int lastHyphenIndex = objectSid.LastIndexOf('-');
+            if (lastHyphenIndex <= 0)
+                return string.Empty;
+
+            return $"{objectSid.AsSpan(0, lastHyphenIndex)}-{primaryGroupRid}";
+        }
+
+        /// <summary>
+        /// Domain-scopes a principal SID the way SharpHound does. Universal / built-in identities carry
+        /// the same raw SID in every domain (Everyone, Authenticated Users, BUILTIN\Administrators, ...),
+        /// so each domain's copy is made distinct by prefixing the owning domain: {DOMAIN}-{SID}. A
+        /// domain-relative SID (S-1-5-21-...) is already globally unique and an unrecognized SID is left
+        /// untouched, so the same reference always resolves to the same node across nodes, ACEs and
+        /// memberships. Scoping must be applied with the domain of the object that owns the reference.
+        /// </summary>
+        public static string ScopeSid(string? sid, string? domain, string? forestRoot = null)
+        {
+            if (string.IsNullOrEmpty(sid)) return sid ?? string.Empty;
+            if (!WellKnownSids.IsScopable(sid)) return sid;
+            // Forest-wide identities (Enterprise Domain Controllers) are scoped to the forest root; every
+            // other well-known/built-in principal is scoped to the object's own domain.
+            string? scope = WellKnownSids.ForestScoped.Contains(sid) ? (forestRoot ?? domain) : domain;
+            return string.IsNullOrEmpty(scope) ? sid : $"{scope}-{sid}".ToUpperInvariant();
+        }
+
+        /// <summary>
+        /// Builds a <see cref="DomainTrust"/> from a trustedDomain object's attributes, mirroring
+        /// SharpHound's DomainTrustProcessor. Returns null when the target SID or the trust
+        /// direction/attributes cannot be parsed. trustPartner supplies the target domain name
+        /// (SharpHound uses canonicalName, which is not available offline).
+        /// </summary>
+        public static DomainTrust? BuildDomainTrust(string? securityIdentifier, string? trustPartner, string? trustDirectionRaw, string? trustAttributesRaw)
+        {
+            string? sid = ParseSid(securityIdentifier);
+            if (string.IsNullOrEmpty(sid)) return null;
+            if (!long.TryParse(trustDirectionRaw, out long td)) return null;
+            if (!long.TryParse(trustAttributesRaw, out long ta)) return null;
+
+            const long NonTransitive = 0x1, QuarantinedDomain = 0x4, ForestTransitive = 0x8,
+                       WithinForest = 0x20, TreatAsExternal = 0x40, CrossOrgEnableTgtDelegation = 0x800;
+
+            return new DomainTrust
+            {
+                TargetDomainSid = sid,
+                TargetDomainName = trustPartner?.ToUpperInvariant() ?? string.Empty,
+                TrustAttributes = ta,
+                IsTransitive = (ta & NonTransitive) == 0,
+                SidFilteringEnabled = (ta & QuarantinedDomain) != 0 ||
+                    ((ta & ForestTransitive) != 0 && (ta & TreatAsExternal) == 0),
+                TGTDelegationEnabled = (ta & QuarantinedDomain) == 0 &&
+                    ((ta & WithinForest) != 0 || (ta & CrossOrgEnableTgtDelegation) != 0),
+                TrustDirection = td switch
+                {
+                    0 => "Disabled",
+                    1 => "Inbound",
+                    2 => "Outbound",
+                    3 => "Bidirectional",
+                    _ => "Disabled"
+                },
+                TrustType = (ta & WithinForest) != 0 ? "ParentChild"
+                    : (ta & ForestTransitive) != 0 ? "Forest"
+                    : "External"
+            };
         }
 
         internal static void NotifyWindowsOnlyFunctionality()

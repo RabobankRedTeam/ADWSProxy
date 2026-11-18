@@ -5,12 +5,9 @@
       "Name": "T1 - Domain context",
       "Description": "Standard domain partition sweep targeting the base domain DN for standard AD objects.",
       "TargetOUs": [ "{{DOMAIN_DN}}" ],
-      "Filter": "(objectGuid=*)",
+      "Filter": "(objectClass=*)",
       "Scope": "Subtree",
-      "Attributes": [
-        "distinguishedname",
-        "*"
-      ],
+      "Attributes": [ "*" ],
       "Engines": [
         "ADWS",
         "LDAP",
@@ -23,10 +20,7 @@
       "TargetOUs": [ "CN=Configuration,{{DOMAIN_DN}}" ],
       "Filter": "(objectClass=*)",
       "Scope": "Subtree",
-      "Attributes": [
-        "distinguishedname",
-        "*"
-      ],
+      "Attributes": [ "*" ],
       "Engines": [
         "ADWS",
         "LDAP",
@@ -35,14 +29,11 @@
     },
     {
       "Name": "T3 - Full RootDSE Domain Expansion Sweep",
-      "Description": "Expands to all naming contexts matching the domain DN.",
+      "Description": "Filtered view: expands to only the naming contexts under the current domain (DNs ending in the domain DN), excluding other forest domains.",
       "TargetOUs": [ "{{allContexts:{{DOMAIN_DN}}}}" ],
       "Filter": "(objectClass=*)",
       "Scope": "Subtree",
-      "Attributes": [
-        "distinguishedname",
-        "*"
-      ],
+      "Attributes": [ "*" ],
       "Engines": [
         "ADWS",
         "LDAP",
@@ -55,10 +46,7 @@
       "TargetOUs": [ "{{allContexts}}" ],
       "Filter": "(objectClass=*)",
       "Scope": "Subtree",
-      "Attributes": [
-        "distinguishedname",
-        "*"
-      ],
+      "Attributes": [ "*" ],
       "Engines": [
         "ADWS-GC",
         "LDAP-GC",
@@ -67,14 +55,11 @@
     },
     {
       "Name": "T5 - Full RootDSE Expansion Sweep",
-      "Description": "Queries RootDSE for all namingContexts across the forest and executes test passes against every partition.",
+      "Description": "Full view: resolves every naming context across the forest (RootDSE plus the Partitions container), including other in-forest domains, and runs against every partition.",
       "TargetOUs": [ "{{allContexts}}" ],
       "Filter": "(objectClass=*)",
       "Scope": "Subtree",
-      "Attributes": [
-        "distinguishedname",
-        "*"
-      ],
+      "Attributes": [ "*" ],
       "Engines": [
         "ADWS",
         "LDAP",

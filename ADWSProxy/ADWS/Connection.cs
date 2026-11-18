@@ -23,7 +23,12 @@ namespace ADWSProxy.ADWS
         {
             logger.Info($"Constructing new {GetType().FullName}");
 
+            // Accept any server certificate. ServicePointManager is obsolete (SYSLIB0014) but is the only
+            // global hook for this; WCF net.tcp here authenticates with Windows credentials, so no modern
+            // per-client replacement applies.
+#pragma warning disable SYSLIB0014
             ServicePointManager.ServerCertificateValidationCallback = (s, c, ch, e) => true;
+#pragma warning restore SYSLIB0014
 
             Server = server;
             Instance = instance;
@@ -130,7 +135,7 @@ namespace ADWSProxy.ADWS
             {
                 return Mode switch
                 {
-                    AdwsEndpoint.Windows => new SpnEndpointIdentity($"host/{Server.ToLower()}"),
+                    AdwsEndpoint.Windows => new SpnEndpointIdentity($"host/{Server.ToLowerInvariant()}"),
                     AdwsEndpoint.Username => new DnsEndpointIdentity(Server),
                     _ => null
                 };
@@ -240,7 +245,7 @@ namespace ADWSProxy.ADWS
                     continue;
                 }
 
-                // This applicaiton does not support SASL
+                // This application does not support SASL
                 if (item.Key.Equals("supportedSASLMechanisms", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
@@ -332,15 +337,18 @@ namespace ADWSProxy.ADWS
                         }
                         var parsedRenewResponse = new RenewResponse(renewResponseBuffer.CreateMessage());
 
-                        string newEnumerateContext = parsedRenewResponse.EnumerateContext!;
-                        DateTime newEnumerateContextExpires = parsedRenewResponse.Expiration;
+                        logger.Debug($"Completed Search.Renew, old context: {enumerateContext} would expire at {enumerateContextExpires?.ToShortDateString()}, new context: {parsedRenewResponse.EnumerateContext} which expires at {parsedRenewResponse.Expiration:d}");
 
-                        logger.Debug($"Completed Search.Renew, old context: {enumerateContext} would expire at {enumerateContextExpires?.ToShortDateString()} and new context: {newEnumerateContext} which expires at {newEnumerateContextExpires:d}");
-
-                        enumerateContext = newEnumerateContext;
-                        enumerateContextExpires = newEnumerateContextExpires;
+                        // Renew always extends the expiry but may omit the context (meaning "keep the
+                        // current one"); only replace it when a new context is actually returned so we
+                        // never null out a still-valid context and break the next Pull.
+                        if (!string.IsNullOrEmpty(parsedRenewResponse.EnumerateContext))
+                        {
+                            enumerateContext = parsedRenewResponse.EnumerateContext;
+                        }
+                        enumerateContextExpires = parsedRenewResponse.Expiration;
                     }
-                    var pullRequest = new PullRequest(Instance, parsedResponse.EnumerateContext!).CreateBufferedCopy();
+                    var pullRequest = new PullRequest(Instance, enumerateContext!).CreateBufferedCopy();
                     pullRequest.WriteMessageToDebug(logger, title: "Pull Request");
 
                     var pullResponse = SearchClient.Pull(pullRequest.CreateMessage());
@@ -353,6 +361,14 @@ namespace ADWSProxy.ADWS
                     }
 
                     var parsedPullResponse = new PullResponse(pullResponseBuffer.CreateMessage());
+
+                    // The server may return a fresh enumeration context on each Pull; adopt it so the
+                    // next Pull and the final Release use the current context rather than a stale one.
+                    if (!string.IsNullOrEmpty(parsedPullResponse.EnumerateContext))
+                    {
+                        enumerateContext = parsedPullResponse.EnumerateContext;
+                    }
+
                     foreach (var i in parsedPullResponse.Items)
                     {
                         callback((i.Key, i.Value));

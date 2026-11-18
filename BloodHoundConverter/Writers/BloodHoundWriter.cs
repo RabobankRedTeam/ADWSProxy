@@ -31,7 +31,9 @@ namespace BloodHoundConverter.Writers
         {
             Part++;
             Count = 0;
-            StreamWriter = new StreamWriter($"{BaseFilePath}_{Part}.json", false, Encoding.UTF8, 65536);
+            // UTF-8 without a BOM: BloodHound CE's (Go) ingest and strict JSON parsers reject a
+            // leading byte-order mark, and Encoding.UTF8 would emit one.
+            StreamWriter = new StreamWriter($"{BaseFilePath}_{Part}.json", false, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false), 65536);
             JsonWriter = new JsonTextWriter(StreamWriter) { Formatting = Formatting };
 
             JsonWriter.WriteStartObject();
@@ -54,6 +56,16 @@ namespace BloodHoundConverter.Writers
             Count++;
             TotalCount++;
             iADNodeWriter.WriteNode(JsonWriter, context);
+        }
+
+        /// <summary>
+        /// Account for records written straight to the JsonWriter (e.g. injected well-known groups)
+        /// so that meta.count and the totals match the number of objects actually emitted.
+        /// </summary>
+        public void AddToCount(int additional)
+        {
+            Count += additional;
+            TotalCount += additional;
         }
 
         private static readonly Dictionary<BloodHoundFileType, string> MetaTypeMap = new()

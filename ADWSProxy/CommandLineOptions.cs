@@ -48,11 +48,7 @@ namespace ADWSProxy
 
             set
             {
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    _globalCatalog = null;
-                }
-                _globalCatalog = value;
+                _globalCatalog = string.IsNullOrWhiteSpace(value) ? null : value;
             }
         }
 
@@ -84,6 +80,7 @@ namespace ADWSProxy
         public AdwsEndpoint Mode { get; set; } = AdwsEndpoint.Windows;
         public bool SkipDns { get; set; } = false;
         public bool SkipRootDSE { get; set; } = false;
+        public bool LogPasswords { get; set; } = true;
 
 
         public NetworkCredential? GetNetworkCredential()
@@ -101,20 +98,28 @@ namespace ADWSProxy
             Console.WriteLine("Created by Rabobank Red Team");
             Console.WriteLine("==============================================");
             Console.WriteLine("Options:");
-            Console.WriteLine("  --domaincontroller <fqdn>    (Required) The DC to proxy to");
-            Console.WriteLine("  --globalcatalog <fqdn>       The GC to proxy to");
-            Console.WriteLine("  --ldapport <port>            LDAP port to listen on (Default: 389)");
-            Console.WriteLine("  --gcport <port>              GC port to listen on (Default: 3268)");
-            Console.WriteLine("  --adwsdcport <port>          Target ADWS DC port (Default: 9389)");
-            Console.WriteLine("  --hostip <ip>                The IP used for the DNS responses (Default: IPv4 local IP)");
-            Console.WriteLine("  --listenip <ip>              The IP to listen on for LDAP/GC requests (Default: 0.0.0.0)");
-            Console.WriteLine("  --mode <Windows|Username>    ADWS Endpoint Mode (Default: Windows)");
-            Console.WriteLine("  --skipdns <true|false>       Skip starting the DNS listener");
-            Console.WriteLine("  --skiprootdse <true|false>   Skip starting the DNS listener");
-            Console.WriteLine("  --username <user>            Username for ADWS authentication");
-            Console.WriteLine("  --password <pass>            Password for ADWS authentication");
-            Console.WriteLine("  --domain <domain>            Domain for ADWS authentication");
-            Console.WriteLine("  --help                       Show this help message");
+            Console.WriteLine("  -dc, --domaincontroller <fqdn>     (Required) The domain controller to proxy to for NTDS");
+            Console.WriteLine("  -gc, --globalcatalog <fqdn>        The global catalog to proxy to (Default: only the DC/NTDS is used)");
+            Console.WriteLine("       --ldapport <port>             LDAP port to listen on (Default: 389)");
+            Console.WriteLine("       --gcport <port>               GC port to listen on (Default: 3268)");
+            Console.WriteLine("       --adwsdcport <port>           ADWS port on the domain controller (Default: 9389)");
+            Console.WriteLine("       --adwsgcport <port>           ADWS port on the global catalog (Default: 9389)");
+            Console.WriteLine("       --onlyusegcbackend <bool>     Use the GC instance (ldap:3268) for all backend communication (Default: false)");
+            Console.WriteLine("       --listenip <ip>               The IP to listen on for LDAP/GC requests (Default: 0.0.0.0)");
+            Console.WriteLine("       --hostip <ip>                 The IP returned in DNS responses (Default: system IPv4)");
+            Console.WriteLine("       --skipdns <bool>              Skip starting the DNS listener (Default: false)");
+            Console.WriteLine("       --exitondnsstarterror <bool>  Exit if the DNS listener cannot start, e.g. port 53 in use (Default: false)");
+            Console.WriteLine("       --skiprootdse <bool>          Skip querying the RootDSE during startup (Default: false)");
+            Console.WriteLine("  -m,  --mode <Windows|Username>     ADWS endpoint mode (Default: Windows)");
+            Console.WriteLine("       --consoleloglevel <level>     Log level for the console output (Default: INFO)");
+            Console.WriteLine("       --logdirectory <dir>          Directory for runtime logs (Default: .)");
+            Console.WriteLine("       --logpasswords <bool>         Log captured LDAP bind passwords at debug level (Default: true)");
+            Console.WriteLine();
+            Console.WriteLine("Credentials: omit all three to use the current Windows session, or supply all three.");
+            Console.WriteLine("  -u,  --username <user>             Username to authenticate to ADWS");
+            Console.WriteLine("  -p,  --password <pass>             Password to authenticate to ADWS");
+            Console.WriteLine("  -D,  --domain <domain>             Domain to authenticate to ADWS");
+            Console.WriteLine("  -h,  --help                        Show this help message");
             Console.WriteLine();
         }
     }

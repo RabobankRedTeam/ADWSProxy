@@ -13,6 +13,9 @@ namespace BloodHoundConverter.Writers
             writer.WriteStartObject();
 
             WriteBasePropertyValues(writer, context);
+            // Always emit blocksinheritance (default false when gPOptions is absent), as BloodHound expects.
+            int gpOptions = int.TryParse(context.GetFirstAttributeValue("gPOptions"), out int g) ? g : 0;
+            WriteProperty(writer, "blocksinheritance", (gpOptions & 1) != 0);
 
             writer.WriteEndObject();
         }
@@ -24,13 +27,13 @@ namespace BloodHoundConverter.Writers
             WriteBaseNodeValues(writer, context, context.ObjectGUID);
             WriteGPOChanges(writer, context);
 
-            WritePropertyArray(writer, "ChildObjects", []);
-            WritePropertyArray(writer, "Links", []);
-            WritePropertyArray(writer, "InheritanceHashes", []);
+            WriteChildObjects(writer, context);
+            WriteLinks(writer, context);
+            WritePropertyArray(writer, "InheritanceHashes", AceParser.ComputeInheritanceHashes(context.SecurityDescriptorBytes));
 
-            AceParser.WriteAcesFromDescriptor(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.OU);
 
-            WriteContaineredBy(writer, context);
+            WriteContainedBy(writer, context);
 
             writer.WriteEndObject();
         }

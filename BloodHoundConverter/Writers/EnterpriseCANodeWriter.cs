@@ -6,7 +6,7 @@ namespace BloodHoundConverter.Writers
 {
     internal class EnterpriseCANodeWriter : IADNodeWriter
     {
-        internal override ILog Log => LogManager.GetLogger(typeof(DomainNodeWriter));
+        internal override ILog Log => LogManager.GetLogger(typeof(EnterpriseCANodeWriter));
 
         public override void WriteNode(JsonTextWriter writer, NodeProcessingContext context)
         {
@@ -26,10 +26,10 @@ namespace BloodHoundConverter.Writers
 
             WriteCARegistryData(writer, context);
             WriteEnabledCertTemplates(writer, context);
-            AceParser.WriteAcesFromDescriptor(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.EnterpriseCA);
             WriteBaseNodeValues(writer, context, context.ObjectGUID);
 
-            WriteContaineredBy(writer, context);
+            WriteContainedBy(writer, context);
 
             writer.WriteEndObject();
         }
@@ -108,32 +108,15 @@ namespace BloodHoundConverter.Writers
 
                             bool isInherited = (knownAce.AceFlags & AceFlags.Inherited) != 0;
 
-                            if (Enum.IsDefined(typeof(CertificationAuthorityRights), knownAce.AccessMask))
+                            // The access mask often combines several rights in one ACE, so test each
+                            // flag with a bitwise AND rather than matching the mask against a single
+                            // named enum value (which Enum.IsDefined would reject for combined masks).
+                            var caRights = (CertificationAuthorityRights)knownAce.AccessMask;
+                            foreach (var (flag, rightString) in CaRightNames)
                             {
-                                var right = (CertificationAuthorityRights)knownAce.AccessMask;
-                                string rightString;
-                                switch (right)
+                                if ((caRights & flag) != flag)
                                 {
-                                    case CertificationAuthorityRights.ManageCA:
-                                        rightString = "ManageCA";
-                                        break;
-                                    case CertificationAuthorityRights.ManageCertificates:
-                                        rightString = "ManageCertificates";
-                                        break;
-                                    case CertificationAuthorityRights.Auditor:
-                                        rightString = "Auditor";
-                                        break;
-                                    case CertificationAuthorityRights.Operator:
-                                        rightString = "Operator";
-                                        break;
-                                    case CertificationAuthorityRights.Enroll:
-                                        rightString = "Enroll";
-                                        break;
-                                    case CertificationAuthorityRights.Read:
-                                        rightString = "Read";
-                                        break;
-                                    default:
-                                        continue;
+                                    continue;
                                 }
 
                                 writer.WriteStartObject();
@@ -155,6 +138,16 @@ namespace BloodHoundConverter.Writers
 
             writer.WriteEndObject();
         }
+        private static readonly (CertificationAuthorityRights Flag, string Name)[] CaRightNames =
+        [
+            (CertificationAuthorityRights.ManageCA, "ManageCA"),
+            (CertificationAuthorityRights.ManageCertificates, "ManageCertificates"),
+            (CertificationAuthorityRights.Auditor, "Auditor"),
+            (CertificationAuthorityRights.Operator, "Operator"),
+            (CertificationAuthorityRights.Enroll, "Enroll"),
+            (CertificationAuthorityRights.Read, "Read"),
+        ];
+
         private static void WriteEnabledCertTemplates(JsonTextWriter writer, NodeProcessingContext context)
         {
             writer.WritePropertyName("EnabledCertTemplates");

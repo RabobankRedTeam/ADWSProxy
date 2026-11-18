@@ -14,16 +14,14 @@ namespace BloodHoundConverter.Writers
             WriteBaseNodeValues(writer, context, context.ObjectSid);
 
             var primaryGroupRid = context.GetFirstAttributeValue("primaryGroupID") ?? "513";
-            var primaryGroupSid = CalculateGroupSid(context.ObjectSid, primaryGroupRid);
+            var primaryGroupSid = Helpers.CalculateGroupSid(context.ObjectSid, primaryGroupRid);
 
             WriteProperty(writer, "PrimaryGroupSID", primaryGroupSid);
-            WritePropertyArray(writer, "HasSIDHistory", context.GetAttributeValues("sIDHistory"), []);
-            writer.WritePropertyName("AllowedToDelegate");
-            writer.WriteStartArray();
-            writer.WriteEndArray();
-
-            AceParser.WriteAcesFromDescriptor(writer, context);
-            WriteContaineredBy(writer, context);
+            WriteSidHistoryPrincipals(writer, context);
+            WriteAllowedToDelegate(writer, context);
+            WriteSpnTargets(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.User);
+            WriteContainedBy(writer, context);
 
             writer.WriteEndObject();
         }
@@ -37,17 +35,14 @@ namespace BloodHoundConverter.Writers
 
             UacParser.WriteUacProperties(writer, context.Attributes, UacParser.UacType.User);
 
-            WritePropertyArray(writer, "serviceprincipalnames", context.GetAttributeValues("servicePrincipalName"), []);
+            var servicePrincipalNames = context.GetAttributeValues("servicePrincipalName");
+            WritePropertyArray(writer, "serviceprincipalnames", servicePrincipalNames, []);
+            WriteProperty(writer, "hasspn", servicePrincipalNames?.Count > 0);
 
-            WriteProperty(writer, "email", context.GetFirstAttributeValue("email"));
+            WriteProperty(writer, "email", context.GetFirstAttributeValue("mail"));
             WriteProperty(writer, "title", context.GetFirstAttributeValue("title"));
             WriteProperty(writer, "homedirectory", context.GetFirstAttributeValue("homedirectory"));
             WriteProperty(writer, "userpassword", context.GetFirstAttributeValue("userpassword"));
-            var adminCountRaw = context.GetFirstAttributeValue("adminCount");
-            if (int.TryParse(adminCountRaw, out var adminCount))
-            {
-                WriteProperty(writer, "admincount", adminCount > 0);
-            }
             WriteProperty(writer, "unixpassword", context.GetFirstAttributeValue("unixpassword"));
             WriteProperty(writer, "unicodepassword", context.GetFirstAttributeValue("unicodepassword"));
             WriteProperty(writer, "logonscript", context.GetFirstAttributeValue("logonscript"));

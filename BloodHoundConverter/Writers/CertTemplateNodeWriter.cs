@@ -18,13 +18,19 @@ namespace BloodHoundConverter.Writers
             "2.5.29.37.0"            // Any Purpose
         };
 
+        private static readonly HashSet<string> SchannelAuthOids = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "1.3.6.1.5.5.7.3.2",     // Client Authentication
+            "2.5.29.37.0"            // Any Purpose
+        };
+
         public override void WriteNode(JsonTextWriter writer, NodeProcessingContext context)
         {
             writer.WriteStartObject();
             WriteProperties(writer, context);
-            AceParser.WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes);
+            AceParser.WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes, ObjectType.CertTemplate, context.DomainName);
             WriteBaseNodeValues(writer, context, context.ObjectGUID);
-            WriteContaineredBy(writer, context);
+            WriteContainedBy(writer, context);
             writer.WriteEndObject();
         }
 
@@ -41,11 +47,12 @@ namespace BloodHoundConverter.Writers
                 WriteProperty(writer, "schemaversion", schemaVersion);
             }
 
-            var appPolicies = context.GetAttributeValues("msPKI-Certificate-Application-Policy");
-            if (context.DistinguishedName.Contains("CN=CROSSCA", StringComparison.OrdinalIgnoreCase) && appPolicies?.Count == 0)
-            {
-                appPolicies.Add("1.3.6.1.4.1.311.10.3.10");
-            }
+            // applicationpolicies comes from msPKI-RA-Application-Policies (the RA signature policies),
+            // not from the certificate application policy. On schema v3 / v4-CNG templates that attribute
+            // is a composite string that ParseApplicationPolicies unpacks.
+            bool hasUseLegacyProvider = int.TryParse(context.GetFirstAttributeValue("mspki-private-key-flag"), out int pkFlags)
+                && (pkFlags & 0x00000100) != 0; // CT_FLAG_USE_LEGACY_PROVIDER
+            var appPolicies = ParseApplicationPolicies(context.GetAttributeValues("mspki-ra-application-policies"), schemaVersion ?? 0, hasUseLegacyProvider);
             WritePropertyArray(writer, "applicationpolicies", appPolicies);
 
             var ekus = context.GetAttributeValues("pkiextendedkeyusage");
@@ -54,7 +61,11 @@ namespace BloodHoundConverter.Writers
             var certificateapplicationpolicy = context.GetAttributeValues("mspki-certificate-application-policy");
             WritePropertyArray(writer, "certificateapplicationpolicy", certificateapplicationpolicy);
 
-            var effectiveekus = (schemaVersion == null || schemaVersion == 1) && ekus?.Count > 0 ? ekus : certificateapplicationpolicy;
+            WritePropertyArray(writer, "certificatepolicy", context.GetAttributeValues("mspki-certificate-policy"));
+
+            // Only schema v1 templates use pkiExtendedKeyUsage as the effective EKUs; v2+ (and any
+            // template without a known schema version) use the certificate application policy.
+            var effectiveekus = schemaVersion == 1 && ekus?.Count > 0 ? ekus : certificateapplicationpolicy;
             WritePropertyArray(writer, "effectiveekus", effectiveekus);
 
             string? oid = context.GetFirstAttributeValue("msPKI-Cert-Template-OID");
@@ -63,25 +74,28 @@ namespace BloodHoundConverter.Writers
                 WriteProperty(writer, "oid", oid);
             }
 
-            string? rawValidty = context.GetFirstAttributeValue("pKIExpirationPeriod");
-            string? rawRenuwal = context.GetFirstAttributeValue("pKIOverlapPeriod");
+            WritePropertyInt(writer, "authorizedsignatures", context.GetFirstAttributeValue("msPKI-RA-Signature"));
+            WritePropertyArray(writer, "issuancepolicies", context.GetAttributeValues("mspki-ra-policies"), []);
 
-            if (!string.IsNullOrWhiteSpace(rawValidty))
+            string? rawValidity = context.GetFirstAttributeValue("pKIExpirationPeriod");
+            string? rawRenewal = context.GetFirstAttributeValue("pKIOverlapPeriod");
+
+            if (!string.IsNullOrWhiteSpace(rawValidity))
             {
-                Span<byte> valBytes = new(new byte[rawValidty.Length]);
-                if (Convert.TryFromBase64String(rawValidty, valBytes, out int bytesWritten))
+                Span<byte> valBytes = new(new byte[rawValidity.Length]);
+                if (Convert.TryFromBase64String(rawValidity, valBytes, out int bytesWritten))
                 {
                     var validity = Helpers.ParseAdTimePeriod(valBytes.ToArray());
                     WriteProperty(writer, "validityperiod", validity);
                 }
             }
-            if (!string.IsNullOrWhiteSpace(rawRenuwal))
+            if (!string.IsNullOrWhiteSpace(rawRenewal))
             {
-                Span<byte> renuwBytes = new(new byte[rawRenuwal.Length]);
-                if (Convert.TryFromBase64String(rawRenuwal, renuwBytes, out int bytesWritten))
+                Span<byte> renewBytes = new(new byte[rawRenewal.Length]);
+                if (Convert.TryFromBase64String(rawRenewal, renewBytes, out int bytesWritten))
                 {
-                    var renuwal = Helpers.ParseAdTimePeriod(renuwBytes.ToArray());
-                    WriteProperty(writer, "renewalperiod", renuwal);
+                    var renewal = Helpers.ParseAdTimePeriod(renewBytes.ToArray());
+                    WriteProperty(writer, "renewalperiod", renewal);
                 }
             }
 
@@ -90,7 +104,7 @@ namespace BloodHoundConverter.Writers
             if (enrollmentFlag.HasValue)
             {
                 WriteProperty(writer, "enrollmentflag", enrollmentFlag);
-                bool requiresManagerApproval = (enrollmentFlag & 0x00000002) != 0; // CT_FLAG_PENDING_INSULTS
+                bool requiresManagerApproval = (enrollmentFlag & 0x00000002) != 0; // CT_FLAG_PEND_ALL_REQUESTS
                 bool noSecurityExtension = (enrollmentFlag & 0x00080000) != 0;     // CT_FLAG_NO_SECURITY_EXTENSION
                 WriteProperty(writer, "requiresmanagerapproval", requiresManagerApproval);
                 WriteProperty(writer, "nosecurityextension", noSecurityExtension);
@@ -100,19 +114,61 @@ namespace BloodHoundConverter.Writers
             {
                 WriteProperty(writer, "certificatenameflag", nameFlag);
 
-                bool enrolleeSuppliesSubject = (nameFlag & 0x00000001) != 0;       // CT_FLAG_ENROLLEE_SUPPLIES_SUBJECT
-                bool subjectAltRequireUpn = (nameFlag & 0x00000200) != 0;          // CT_FLAG_SUBJECT_ALT_REQUIRE_UPN
-                WriteProperty(writer, "enrolleesuppliessubject", enrolleeSuppliesSubject);
-                WriteProperty(writer, "subjectaltrequireupn", subjectAltRequireUpn);
+                // msPKI-Certificate-Name-Flag (CT_FLAG_*) bits
+                WriteProperty(writer, "enrolleesuppliessubject", (nameFlag & 0x00000001) != 0);   // ENROLLEE_SUPPLIES_SUBJECT
+                WriteProperty(writer, "subjectaltrequireupn", (nameFlag & 0x02000000) != 0);       // SUBJECT_ALT_REQUIRE_UPN
+                WriteProperty(writer, "subjectaltrequiredns", (nameFlag & 0x08000000) != 0);       // SUBJECT_ALT_REQUIRE_DNS
+                WriteProperty(writer, "subjectaltrequiredomaindns", (nameFlag & 0x00400000) != 0); // SUBJECT_ALT_REQUIRE_DOMAIN_DNS
+                WriteProperty(writer, "subjectaltrequireemail", (nameFlag & 0x04000000) != 0);     // SUBJECT_ALT_REQUIRE_EMAIL
+                WriteProperty(writer, "subjectaltrequirespn", (nameFlag & 0x00800000) != 0);       // SUBJECT_ALT_REQUIRE_SPN
+                WriteProperty(writer, "subjectrequireemail", (nameFlag & 0x20000000) != 0);        // SUBJECT_REQUIRE_EMAIL
             }
 
-            bool? authEnabled = ekus?.Any(eku => AuthOids.Contains(eku));
-            if (authEnabled.HasValue)
+            // msPKI-Template-Schema-Version (like the certificate-application-policy and the other mspki-*
+            // template attributes) is part of the full LDAP object but not the GC partial attribute set,
+            // so its presence marks a full dump. For a full dump, follow SharpHound: an empty effectiveEKUs
+            // set means "no EKU restriction → usable for any purpose", so authentication is enabled. For a
+            // GC-sourced dump the effective EKUs cannot be computed reliably (schema version and
+            // certificate-application-policy are absent), so omit the flags (fail safe) rather than flag
+            // every template as authentication-capable.
+            if (schemaVersion.HasValue)
             {
-                WriteProperty(writer, "authenticationenabled", authEnabled);
+                var effective = effectiveekus ?? [];
+                bool noEkuRestriction = effective.Count == 0;
+                WriteProperty(writer, "authenticationenabled", noEkuRestriction || effective.Any(eku => AuthOids.Contains(eku)));
+                WriteProperty(writer, "schannelauthenticationenabled", noEkuRestriction || effective.Any(eku => SchannelAuthOids.Contains(eku)));
             }
 
             writer.WriteEndObject();
+        }
+
+        /// <summary>
+        /// Resolves the template's application policies from the raw msPKI-RA-Application-Policies
+        /// values. For schema v1/v2 (and v4 with the legacy provider) the values are returned as-is.
+        /// For schema v3 / v4-CNG the single value is a composite "Name`Type`Value`..." string
+        /// (MS-CRTD 2.27); this returns the Value of each msPKI-RA-Application-Policies entry.
+        /// </summary>
+        private static List<string>? ParseApplicationPolicies(List<string>? applicationPolicies, int schemaVersion, bool hasUseLegacyProvider)
+        {
+            if (applicationPolicies == null
+                || applicationPolicies.Count == 0
+                || schemaVersion == 1
+                || schemaVersion == 2
+                || (schemaVersion == 4 && hasUseLegacyProvider))
+            {
+                return applicationPolicies;
+            }
+
+            var entries = applicationPolicies[0].Split('`');
+            var result = new List<string>();
+            for (int i = 0; i + 2 < entries.Length; i += 3)
+            {
+                if (entries[i].Equals("mspki-ra-application-policies", StringComparison.OrdinalIgnoreCase))
+                {
+                    result.Add(entries[i + 2]);
+                }
+            }
+            return result;
         }
     }
 

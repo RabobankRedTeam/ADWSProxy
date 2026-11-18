@@ -1,5 +1,6 @@
 ﻿using log4net;
 using Newtonsoft.Json;
+using System.Text.RegularExpressions;
 
 namespace BloodHoundConverter.Writers
 {
@@ -196,98 +197,273 @@ namespace BloodHoundConverter.Writers
             WriteProperty(writer, "whenchanged", context.WhenChanged);
             WriteProperty(writer, "objectguid", context.ObjectGUID);
             WriteProperty(writer, "description", context.Description);
-            WriteProperty(writer, "lastlogon", Helpers.GeneralizedTimeToUnixEpoch(context.GetFirstAttributeValue("lastlogon")));
-            WriteProperty(writer, "lastlogontimestamp", Helpers.GeneralizedTimeToUnixEpoch(context.GetFirstAttributeValue("lastlogontimestamp")));
-            WriteProperty(writer, "pwdlastset", Helpers.GeneralizedTimeToUnixEpoch(context.GetFirstAttributeValue("pwdlastset")));
+            WriteProperty(writer, "lastlogon", Helpers.FileTimeToUnixEpoch(context.GetFirstAttributeValue("lastlogon")));
+            WriteProperty(writer, "lastlogontimestamp", Helpers.FileTimeToUnixEpoch(context.GetFirstAttributeValue("lastlogontimestamp")));
+            WriteProperty(writer, "pwdlastset", Helpers.FileTimeToUnixEpoch(context.GetFirstAttributeValue("pwdlastset")));
             WriteProperty(writer, "admincount", context.GetFirstAttributeValue("adminCount")?.Equals("1"));
 
             WritePropertyArray(writer, "sidhistory", context.GetAttributeValues("sidhistory")?.Select(x => Helpers.ParseSid(x)), []);
         }
 
+        // Matches each [LDAP://<gpo dn>;<options>] segment of a gPLink value.
+        private static readonly Regex GpLinkRegex = new(@"\[LDAP://([^;\]]+);(\d+)\]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Writes the "Links" array from the object's gPLink attribute. Each enabled link resolves the
+        /// GPO distinguished name to its ObjectIdentifier; disabled links (option bit 0) are skipped and
+        /// the enforced state comes from option bit 1. Emitted by domains and OUs.
+        /// </summary>
+        protected static void WriteLinks(JsonTextWriter writer, NodeProcessingContext context)
+        {
+            writer.WritePropertyName("Links");
+            writer.WriteStartArray();
+
+            var rawGpLink = context.GetFirstAttributeValue("gPLink");
+            if (!string.IsNullOrWhiteSpace(rawGpLink))
+            {
+                foreach (Match match in GpLinkRegex.Matches(rawGpLink))
+                {
+                    if (!int.TryParse(match.Groups[2].Value, out int options)) continue;
+                    if ((options & 1) != 0) continue; // link disabled
+
+                    string gpoDn = match.Groups[1].Value.Trim();
+                    if (BloodHoundConverter.GpoDnToGuidMap.TryGetValue(gpoDn, out var gpoGuid))
+                    {
+                        writer.WriteStartObject();
+                        WriteProperty(writer, "IsEnforced", (options & 2) != 0);
+                        WriteProperty(writer, "GUID", gpoGuid);
+                        writer.WriteEndObject();
+                    }
+                }
+            }
+
+            writer.WriteEndArray();
+        }
+
+        /// <summary>
+        /// Writes the domain "Trusts" array from the trustedDomain objects harvested for this domain.
+        /// </summary>
+        protected static void WriteTrusts(JsonTextWriter writer, NodeProcessingContext context)
+        {
+            writer.WritePropertyName("Trusts");
+            writer.WriteStartArray();
+
+            if (BloodHoundConverter.DomainTrustsByDomain.TryGetValue(context.DomainName, out var trusts))
+            {
+                foreach (var trust in trusts)
+                {
+                    writer.WriteStartObject();
+                    WriteProperty(writer, "TargetDomainSid", trust.TargetDomainSid);
+                    WriteProperty(writer, "TargetDomainName", trust.TargetDomainName);
+                    WriteProperty(writer, "IsTransitive", trust.IsTransitive);
+                    WriteProperty(writer, "SidFilteringEnabled", trust.SidFilteringEnabled);
+                    WriteProperty(writer, "TGTDelegationEnabled", trust.TGTDelegationEnabled);
+                    WriteProperty(writer, "TrustAttributes", trust.TrustAttributes);
+                    WriteProperty(writer, "TrustDirection", trust.TrustDirection);
+                    WriteProperty(writer, "TrustType", trust.TrustType);
+                    writer.WriteEndObject();
+                }
+            }
+
+            writer.WriteEndArray();
+        }
+
         protected static void WriteGPOChanges(JsonTextWriter writer, NodeProcessingContext _)
         {
+            writer.WritePropertyName("GPOChanges");
+            writer.WriteStartObject();
             WritePropertyArray(writer, "LocalAdmins", []);
             WritePropertyArray(writer, "RemoteDesktopUsers", []);
             WritePropertyArray(writer, "DcomUsers", []);
             WritePropertyArray(writer, "PSRemoteUsers", []);
             WritePropertyArray(writer, "AffectedComputers", []);
+            writer.WriteEndObject();
         }
 
         public abstract void WriteNode(JsonTextWriter writer, NodeProcessingContext context);
 
-        protected string? CalculateGroupSid(string objectSid, string primaryGroupRid)
+        /// <summary>
+        /// Writes the "HasSIDHistory" array as typed principals ({ObjectIdentifier, ObjectType}) from
+        /// the object's sIDHistory values. Each value is parsed to a SID and its type resolved via the
+        /// IdToTypeMap, defaulting to Base when the SID is not known. Emitted by users and computers.
+        /// </summary>
+        protected static void WriteSidHistoryPrincipals(JsonTextWriter writer, NodeProcessingContext context)
         {
-            if (string.IsNullOrWhiteSpace(objectSid) || string.IsNullOrWhiteSpace(primaryGroupRid))
-                return null;
-
-            // 1. Check for universal well-known built-in local groups (S-1-5-32-RID)
-            // Common examples: 544 (Administrators), 545 (Users), 556 (Network Configuration Operators)
-            int rid = int.TryParse(primaryGroupRid, out var parsedRid) ? parsedRid : 0;
-            if (rid >= 540 && rid <= 580)
+            writer.WritePropertyName("HasSIDHistory");
+            writer.WriteStartArray();
+            foreach (var raw in context.GetAttributeValues("sidhistory") ?? [])
             {
-                return $"S-1-5-32-{primaryGroupRid}";
+                string? sid = Helpers.ParseSid(raw);
+                if (string.IsNullOrEmpty(sid))
+                {
+                    continue;
+                }
+
+                string objectType = BloodHoundConverter.IdToTypeMap.TryGetValue(sid, out var type)
+                    ? Helpers.ObjectTypeToString(type)
+                    : Helpers.ObjectTypeToString(ObjectType.Base);
+
+                writer.WriteStartObject();
+                WriteProperty(writer, "ObjectIdentifier", sid);
+                WriteProperty(writer, "ObjectType", objectType);
+                writer.WriteEndObject();
             }
-
-            // 2. Fall back to standard Domain-Relative group calculations (S-1-5-21-...-RID)
-            try
-            {
-                if (!objectSid.Contains('-')) return string.Empty;
-
-                string[] parts = objectSid.Split('-');
-
-                // Reconstruct the domain authority prefix base, dropping the final object RID part
-                string domainSidBase = string.Join("-", parts.Take(parts.Length - 1));
-
-                // Append the target group RID to form the absolute Group SID
-                return $"{domainSidBase}-{primaryGroupRid}";
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"Error calculating primary group SID for object SID: {objectSid}, RID: {primaryGroupRid}", ex);
-                return string.Empty;
-            }
+            writer.WriteEndArray();
         }
 
-        protected static void WriteContaineredBy(JsonTextWriter writer, NodeProcessingContext context)
+        /// <summary>
+        /// Writes the "ChildObjects" array ({ObjectIdentifier, ObjectType}) of this container's direct
+        /// children, resolved from the parent-DN index (the inverse of WriteContainedBy). Emitted by
+        /// domains, OUs and containers; produces the Contains edges.
+        /// </summary>
+        protected static void WriteChildObjects(JsonTextWriter writer, NodeProcessingContext context)
         {
-            string parentDn = string.Empty;
-            int firstComma = context.DistinguishedName.IndexOf(',');
-            if (firstComma > 0 && firstComma < context.DistinguishedName.Length - 1)
+            writer.WritePropertyName("ChildObjects");
+            writer.WriteStartArray();
+            if (BloodHoundConverter.ChildObjectsByParentDn.TryGetValue(context.DistinguishedName, out var children))
             {
-                parentDn = context.DistinguishedName[(firstComma + 1)..].Trim();
-            }
-            if (!string.IsNullOrEmpty(parentDn))
-            {
-                string? objectIdentifier = null;
-                string? objectType = null;
-
-                writer.WritePropertyName("ContainedBy");
-                if (BloodHoundConverter.DnToIdentityMap.TryGetValue(parentDn.ToUpperInvariant(), out var typeAndSid))
+                foreach (var child in children)
                 {
-                    objectIdentifier = typeAndSid.Id;
-                    objectType = Helpers.ObjectTypeToString(typeAndSid.Type);
-                }
-                else
-                {
-                    if (parentDn.StartsWith("DC=", StringComparison.OrdinalIgnoreCase))
+                    if (string.IsNullOrEmpty(child.Id))
                     {
-                        objectIdentifier = context.DomainSid;
-                        objectType = "Domain";
+                        continue;
                     }
-                }
-
-                if (!string.IsNullOrWhiteSpace(objectIdentifier) && !string.IsNullOrWhiteSpace(objectType))
-                {
                     writer.WriteStartObject();
-                    WriteProperty(writer, "ObjectIdentifier", objectIdentifier);
-                    WriteProperty(writer, "ObjectType", objectType);
+                    WriteProperty(writer, "ObjectIdentifier", child.Id);
+                    WriteProperty(writer, "ObjectType", Helpers.ObjectTypeToString(child.Type));
                     writer.WriteEndObject();
                 }
-                else
+            }
+            writer.WriteEndArray();
+        }
+
+        /// <summary>
+        /// Writes the "AllowedToDelegate" array ({ObjectIdentifier, ObjectType}) from the object's
+        /// msDS-AllowedToDelegateTo (constrained delegation). Each SPN's host is resolved to a computer
+        /// via DnsNameToIdMap; unresolved hosts are skipped. Emitted by users and computers.
+        /// </summary>
+        protected static void WriteAllowedToDelegate(JsonTextWriter writer, NodeProcessingContext context)
+        {
+            writer.WritePropertyName("AllowedToDelegate");
+            writer.WriteStartArray();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var spn in context.GetAttributeValues("msds-allowedtodelegateto") ?? [])
+            {
+                var computerId = ResolveSpnHostToComputerId(spn);
+                if (computerId == null || !seen.Add(computerId))
                 {
-                    const string? nullValue = null;
-                    writer.WriteValue(nullValue);
+                    continue;
                 }
+                var type = BloodHoundConverter.IdToTypeMap.TryGetValue(computerId, out var t) ? t : ObjectType.Computer;
+                writer.WriteStartObject();
+                WriteProperty(writer, "ObjectIdentifier", computerId);
+                WriteProperty(writer, "ObjectType", Helpers.ObjectTypeToString(type));
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+        }
+
+        /// <summary>
+        /// Writes the "SPNTargets" array ({ComputerSID, Port, Service}) from the object's own
+        /// servicePrincipalName. Mirrors SharpHound: only MSSQLSvc SPNs, resolved to a computer, emit a
+        /// SQLAdmin target (default port 1433). Emitted by users.
+        /// </summary>
+        protected static void WriteSpnTargets(JsonTextWriter writer, NodeProcessingContext context)
+        {
+            writer.WritePropertyName("SPNTargets");
+            writer.WriteStartArray();
+            foreach (var spn in context.GetAttributeValues("serviceprincipalname") ?? [])
+            {
+                if (string.IsNullOrWhiteSpace(spn) || spn.Contains('@')
+                    || spn.IndexOf("mssqlsvc", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+                var computerId = ResolveSpnHostToComputerId(spn);
+                if (computerId == null)
+                {
+                    continue;
+                }
+                int port = 1433;
+                var parts = spn.Split(':');
+                if (parts.Length > 1 && int.TryParse(parts[1], out int parsedPort))
+                {
+                    port = parsedPort;
+                }
+                writer.WriteStartObject();
+                WriteProperty(writer, "ComputerSID", computerId);
+                WriteProperty(writer, "Port", port);
+                WriteProperty(writer, "Service", "SQLAdmin");
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+        }
+
+        // Extracts the host from an SPN ("service/host[:port][/rest]") and resolves it to a computer
+        // ObjectIdentifier via DnsNameToIdMap. Returns null when the SPN has no host or the host (an
+        // FQDN dNSHostName) was not collected.
+        private static string? ResolveSpnHostToComputerId(string? spn)
+        {
+            if (string.IsNullOrWhiteSpace(spn))
+            {
+                return null;
+            }
+            int slash = spn.IndexOf('/');
+            if (slash < 0 || slash == spn.Length - 1)
+            {
+                return null;
+            }
+            string host = spn[(slash + 1)..];
+            int colon = host.IndexOf(':');
+            if (colon >= 0)
+            {
+                host = host[..colon];
+            }
+            int nextSlash = host.IndexOf('/');
+            if (nextSlash >= 0)
+            {
+                host = host[..nextSlash];
+            }
+            if (string.IsNullOrWhiteSpace(host))
+            {
+                return null;
+            }
+            return BloodHoundConverter.DnsNameToIdMap.TryGetValue(host, out var id) ? id : null;
+        }
+
+        protected static void WriteContainedBy(JsonTextWriter writer, NodeProcessingContext context)
+        {
+            int firstComma = context.DistinguishedName.IndexOf(',');
+            if (firstComma <= 0 || firstComma >= context.DistinguishedName.Length - 1)
+            {
+                return; // No parent in the DN (a naming-context root): omit ContainedBy entirely.
+            }
+
+            // Domains stay top-level, matching SharpHound; a child domain is linked to its parent by trust
+            // edges, not containment, so it carries no ContainedBy.
+            if (BloodHoundConverter.DnToIdentityMap.TryGetValue(context.DistinguishedName, out var self)
+                && self.Type == ObjectType.Domain)
+            {
+                return;
+            }
+
+            writer.WritePropertyName("ContainedBy");
+
+            // Resolve to the nearest emitted ancestor rather than the immediate parent, so the edge never
+            // points at a collected-but-not-emitted container (the flags-less CN=OID, attribute-less DNS
+            // stubs, schema objects).
+            string? ancestorDn = BloodHoundConverter.FindEmittedAncestorDn(context.DistinguishedName);
+            if (ancestorDn != null && BloodHoundConverter.DnToIdentityMap.TryGetValue(ancestorDn, out var parent))
+            {
+                writer.WriteStartObject();
+                WriteProperty(writer, "ObjectIdentifier", parent.Id);
+                WriteProperty(writer, "ObjectType", Helpers.ObjectTypeToString(parent.Type));
+                writer.WriteEndObject();
+            }
+            else
+            {
+                const string? nullValue = null;
+                writer.WriteValue(nullValue);
             }
         }
     }

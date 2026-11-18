@@ -1,0 +1,147 @@
+{
+  "_serverDescription": "The top-level 'Server' is the default DC contacted for any query that does not set its own 'Server'. Each query's 'Server' overrides it. In this generated forest file every query pins a concrete DC, so the top-level value is only a fallback (the DC discovery was run against). Only servers named in this file are ever contacted.",
+  "Server": "corpdc01.corp.internal",
+  "Queries": [
+    {
+      "Name": "Forest Configuration - CN=Configuration,DC=corp,DC=internal",
+      "Server": "corpdc01.corp.internal",
+      "TargetOUs": [
+        "CN=Configuration,DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Forest Domain - corp.internal",
+      "Server": "corpdc01.corp.internal",
+      "TargetOUs": [
+        "DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Forest Schema - CN=Schema,CN=Configuration,DC=corp,DC=internal",
+      "Server": "corpdc01.corp.internal",
+      "TargetOUs": [
+        "CN=Schema,CN=Configuration,DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Forest Partition - DomainDnsZones.corp.internal",
+      "Server": "corpdc01.corp.internal",
+      "TargetOUs": [
+        "DC=DomainDnsZones,DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Forest Partition - ForestDnsZones.corp.internal",
+      "Server": "corpdc01.corp.internal",
+      "TargetOUs": [
+        "DC=ForestDnsZones,DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Forest Domain - dev.corp.internal",
+      "Server": "devdc01.dev.corp.internal",
+      "TargetOUs": [
+        "DC=dev,DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Forest Partition - DomainDnsZones.dev.corp.internal",
+      "Server": "devdc01.dev.corp.internal",
+      "TargetOUs": [
+        "DC=DomainDnsZones,DC=dev,DC=corp,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    },
+    {
+      "Name": "Trusted Domain - partner.internal (REVIEW: separate forest usually needs its own credentials; re-run generation against it to expand)",
+      "Server": "partdc01.partner.internal",
+      "Credentials": {
+        "Username": "",
+        "Password": "",
+        "Domain": ""
+      },
+      "TargetOUs": [
+        "DC=partner,DC=internal"
+      ],
+      "Filter": "(objectClass=*)",
+      "Scope": "Subtree",
+      "Attributes": [
+        "*"
+      ],
+      "Engines": [
+        "ADWS",
+        "LDAP",
+        "LDAPS"
+      ]
+    }
+  ]
+}

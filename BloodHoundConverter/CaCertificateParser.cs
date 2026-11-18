@@ -21,7 +21,7 @@ namespace BloodHoundConverter
                 byte[] rawCertBytes = Convert.FromBase64String(base64Cert);
 
                 // 2. Instantiate the single in-memory X509 cryptographic instance
-                using X509Certificate2 cert = new(rawCertBytes);
+                using X509Certificate2 cert = X509CertificateLoader.LoadCertificate(rawCertBytes);
 
                 // 🎯 Extract core fingerprints & identity strings
                 data.Thumbprint = cert.Thumbprint.ToUpperInvariant();

@@ -33,7 +33,7 @@ namespace ADWSProxy.DNS
 
             foreach (var question in query.Questions)
             {
-                string name = question.Name.ToString().ToLower().TrimEnd('.');
+                string name = question.Name.ToString().ToLowerInvariant().TrimEnd('.');
                 logger.Debug($"Processing {question.RecordType} query for: {name}");
 
                 switch (question.RecordType)

@@ -1,11 +1,7 @@
-﻿using log4net;
-
-namespace BloodHoundConverter.Writers
+﻿namespace BloodHoundConverter.Writers
 {
     internal class NodeProcessingContext
     {
-        private static readonly ILog log = LogManager.GetLogger(typeof(NodeProcessingContext));
-
         internal string Name { get; set; } = string.Empty;
         internal string DistinguishedName { get; set; } = string.Empty;
         internal string ObjectSid { get; set; } = string.Empty;
@@ -32,9 +28,32 @@ namespace BloodHoundConverter.Writers
                     .Select(part => part[3..])
                     .ToArray();
 
-                return dcComponents.Length == 0 ? string.Empty : string.Join(".", dcComponents).ToUpper();
+                return dcComponents.Length == 0 ? string.Empty : string.Join(".", dcComponents).ToUpperInvariant();
             }
             catch { return string.Empty; }
+        }
+
+        // Objects in the DNS application partitions (DomainDnsZones/ForestDnsZones) carry DC= components
+        // for the DNS node hierarchy, so the raw DC= join is not a real domain. Map an object to the real
+        // AD domain it belongs to: the longest SID-bearing domain its DC= DNS ends with. Falls back to the
+        // raw value when nothing matches, so a well-known principal is scoped to a real domain rather than
+        // a per-DNS-node pseudo-domain.
+        private static string ResolveOwningDomain(string rawDomainDns, Dictionary<string, string> domainToSidMap)
+        {
+            if (string.IsNullOrEmpty(rawDomainDns)) return rawDomainDns;
+            string best = rawDomainDns;
+            int bestLen = -1;
+            foreach (var known in domainToSidMap.Keys)
+            {
+                if ((rawDomainDns.Equals(known, StringComparison.OrdinalIgnoreCase) ||
+                     rawDomainDns.EndsWith("." + known, StringComparison.OrdinalIgnoreCase)) &&
+                    known.Length > bestLen)
+                {
+                    best = known;
+                    bestLen = known.Length;
+                }
+            }
+            return best.ToUpperInvariant();
         }
 
         internal NodeProcessingContext(
@@ -60,12 +79,28 @@ namespace BloodHoundConverter.Writers
                                         GetFirstAttributeValue("name") ??
                                         GetFirstAttributeValue("cn") ??
                                         string.Empty;
-            DomainName = ExtractDomainFromDn(dataHolder.DistinguishedName).ToUpper();
-            string[] typesWithDotInName = ["computer", "domain"];
-            Name = (GetAttributeValues("objectclass")?.Any(x => typesWithDotInName.Contains(x))) == true
-                ? $"{SamAccountName.Trim('$')}.{DomainName}".ToUpper()
-                : $"{SamAccountName.Trim('$')}@{DomainName}".ToUpper();
-            ObjectSid = GetFirstAttributeValue("objectSid") is string rawSid ? Helpers.ParseSid(rawSid) ?? string.Empty : string.Empty;
+            DomainName = ResolveOwningDomain(ExtractDomainFromDn(dataHolder.DistinguishedName), domainToSidMap);
+            string[] typesWithDotInName = ["computer"];
+            var objectClasses = GetAttributeValues("objectclass");
+            // gMSA/sMSA carry the "computer" objectClass but are emitted as user nodes, so they take
+            // the user-style SAM@DOMAIN name rather than the computer-style dotted name.
+            bool isManagedServiceAccount = objectClasses?.Any(x =>
+                x.Equals("msDS-GroupManagedServiceAccount", StringComparison.OrdinalIgnoreCase) ||
+                x.Equals("msDS-ManagedServiceAccount", StringComparison.OrdinalIgnoreCase)) == true;
+            // The domain object's name is its DNS FQDN, not a SAM-derived dotted name.
+            bool isDomainObject = objectClasses?.Any(x =>
+                x.Equals("domainDNS", StringComparison.OrdinalIgnoreCase)) == true;
+            bool useDottedName = !isManagedServiceAccount &&
+                objectClasses?.Any(x => typesWithDotInName.Contains(x)) == true;
+            Name = isDomainObject
+                ? DomainName
+                : useDottedName
+                    ? $"{SamAccountName.Trim('$')}.{DomainName}".ToUpperInvariant()
+                    : $"{SamAccountName.Trim('$')}@{DomainName}".ToUpperInvariant();
+            // Domain-scope the node's own identifier so a well-known/built-in principal (e.g. a
+            // BUILTIN group) gets the same {DOMAIN}-{SID} identity used by every ACE/membership
+            // reference to it; domain-relative SIDs are returned unchanged.
+            ObjectSid = GetFirstAttributeValue("objectSid") is string rawSid ? Helpers.ScopeSid(Helpers.ParseSid(rawSid), DomainName) : string.Empty;
 
             DomainSid = domainSid;
 
@@ -129,37 +164,5 @@ namespace BloodHoundConverter.Writers
             return null;
         }
 
-        internal string CalculateGroupSid(string primaryGroupRid)
-        {
-            if (string.IsNullOrWhiteSpace(ObjectSid) || string.IsNullOrWhiteSpace(primaryGroupRid))
-                return string.Empty;
-
-            // 1. Check for universal well-known built-in local groups (S-1-5-32-RID)
-            // Common examples: 544 (Administrators), 545 (Users), 556 (Network Configuration Operators)
-            int rid = int.TryParse(primaryGroupRid, out var parsedRid) ? parsedRid : 0;
-            if (rid >= 540 && rid <= 580)
-            {
-                return $"S-1-5-32-{primaryGroupRid}";
-            }
-
-            // 2. Fall back to standard Domain-Relative group calculations (S-1-5-21-...-RID)
-            try
-            {
-                if (!ObjectSid.Contains('-')) return string.Empty;
-
-                string[] parts = ObjectSid.Split('-');
-
-                // Reconstruct the domain authority prefix base, dropping the final object RID part
-                string domainSidBase = string.Join("-", parts.Take(parts.Length - 1));
-
-                // Append the target group RID to form the absolute Group SID
-                return $"{domainSidBase}-{primaryGroupRid}";
-            }
-            catch (Exception ex)
-            {
-                log.Error($"Error calculating primary group SID for object SID: {ObjectSid}, RID: {primaryGroupRid}", ex);
-                return string.Empty;
-            }
-        }
     }
 }

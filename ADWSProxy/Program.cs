@@ -21,14 +21,14 @@ namespace ADWSProxy
             {
                 if (!IPAddress.TryParse(string.Join(":", ep, 0, ep.Length - 1), out ip))
                 {
-                    throw new FormatException("Invalid ip-adress");
+                    throw new FormatException("Invalid ip-address");
                 }
             }
             else
             {
                 if (!IPAddress.TryParse(ep[0], out ip))
                 {
-                    throw new FormatException("Invalid ip-adress");
+                    throw new FormatException("Invalid ip-address");
                 }
             }
             if (!int.TryParse(ep[^1], out int port))
@@ -95,9 +95,9 @@ namespace ADWSProxy
                 var dc = options.DomainController;
                 ArgumentNullException.ThrowIfNullOrWhiteSpace(dc);
 
-                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, options.ADWSDCPort, ldapInstance, options.Mode, options.GetNetworkCredential());
+                LDAPListener = new Listener(CreateIPEndPoint(LDAPEndpoint), dc, options.ADWSDCPort, ldapInstance, options.Mode, options.GetNetworkCredential(), options.LogPasswords);
                 LDAPListener.Start();
-                logger.Info($"Succesfully started the LDAPListener on {LDAPEndpoint} using instance {ldapInstance}");
+                logger.Info($"Successfully started the LDAPListener on {LDAPEndpoint} using instance {ldapInstance}");
 
                 var gc = options.GlobalCatalog;
                 if (string.IsNullOrWhiteSpace(gc))
@@ -108,9 +108,9 @@ namespace ADWSProxy
                 {
                     var GCEndpoint = $"{options.ListenIP}:{options.GCPort}";
 
-                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, options.ADWSGCPort, gcInstance, options.Mode, options.GetNetworkCredential());
+                    GCListener = new Listener(CreateIPEndPoint(GCEndpoint), gc, options.ADWSGCPort, gcInstance, options.Mode, options.GetNetworkCredential(), options.LogPasswords);
                     GCListener.Start();
-                    logger.Info($"Succesfully started the GCListener on {GCEndpoint} using instance {gcInstance}");
+                    logger.Info($"Successfully started the GCListener on {GCEndpoint} using instance {gcInstance}");
                 }
 
                 if (options.SkipDns)
@@ -123,11 +123,11 @@ namespace ADWSProxy
                     {
                         if (StartDNS(options.ExitOnDNSStartError, options.LDAPPort, options.GCPort, options.HostIP))
                         {
-                            logger.Info("Succesfully started the DNSListener");
+                            logger.Info("Successfully started the DNSListener");
                         }
                         else
                         {
-                            const string errorString = "Error starting DNSListner";
+                            const string errorString = "Error starting DNSListener";
                             throw new Exception(errorString);
                         }
                     }
@@ -149,7 +149,7 @@ namespace ADWSProxy
                     {
                         logger.Info("Trying to get RootDSE via LDAPListener");
                         var rootDSE = LDAPListener.ADWSConnection.GetRootDSE();
-                        logger.Info("Succesfully got RootDSE via LDAPListener");
+                        logger.Info("Successfully got RootDSE via LDAPListener");
                         logger.Debug($"LDAP RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
                     }
                 }
@@ -169,7 +169,7 @@ namespace ADWSProxy
                         {
                             logger.Info("Trying to get RootDSE via GCListener");
                             var rootDSE = GCListener.ADWSConnection.GetRootDSE();
-                            logger.Info("Succesfully got RootDSE via GCListener");
+                            logger.Info("Successfully got RootDSE via GCListener");
                             logger.Debug($"GC RootDSE: {string.Join("; ", rootDSE.Select(d => d.ToString()))}");
                         }
                     }

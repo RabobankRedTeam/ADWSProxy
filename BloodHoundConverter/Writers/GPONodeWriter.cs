@@ -12,8 +12,8 @@ namespace BloodHoundConverter.Writers
             writer.WriteStartObject();
             WriteProperties(writer, context);
             WriteBaseNodeValues(writer, context, context.ObjectGUID);
-            WriteContaineredBy(writer, context);
-            AceParser.WriteAcesFromDescriptor(writer, context);
+            WriteContainedBy(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.GPO);
             writer.WriteEndObject();
         }
 
@@ -26,8 +26,6 @@ namespace BloodHoundConverter.Writers
 
             WriteProperty(writer, "gpcpath", context.GetFirstAttributeValue("gPCFileSysPath"));
             WriteProperty(writer, "gpostatus", context.GetFirstAttributeValue("flags"));
-
-            WriteContaineredBy(writer, context);
 
             writer.WriteEndObject();
         }

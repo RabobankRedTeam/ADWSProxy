@@ -5,18 +5,6 @@ namespace BloodHoundConverter
 {
     internal static class UacParser
     {
-        // 🎯 Active Directory UserAccountControl Bitmask Constants
-        [Flags]
-        public enum UserAccountControlFlags : int
-        {
-            NONE = 0,
-            ACCOUNTDISABLE = 0x0002,          // 2
-            PASSWD_NOTREQD = 0x0020,          // 32
-            TRUSTED_FOR_DELEGATION = 0x80000,  // 524,288
-            DONT_REQ_PREAUTH = 0x400000,       // 4,194,304
-            TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION = 0x1000000 // 16,777,216
-        }
-
         public enum UacType
         {
             Computer,
@@ -41,6 +29,8 @@ namespace BloodHoundConverter
             bool passwordNotReqd = false;
             bool unconstrainedDelegation = false;
             bool trustedToAuth = false;
+            bool pwdNeverExpires = false;
+            bool sensitive = false;
 
             if (uac > 0)
             {
@@ -50,6 +40,8 @@ namespace BloodHoundConverter
                 passwordNotReqd = (uac & (int)UserAccountControlFlags.PASSWD_NOTREQD) != 0;
                 unconstrainedDelegation = (uac & (int)UserAccountControlFlags.TRUSTED_FOR_DELEGATION) != 0;
                 trustedToAuth = (uac & (int)UserAccountControlFlags.TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION) != 0;
+                pwdNeverExpires = (uac & (int)UserAccountControlFlags.DONT_EXPIRE_PASSWORD) != 0;
+                sensitive = (uac & (int)UserAccountControlFlags.NOT_DELEGATED) != 0;
             }
 
             IADNodeWriter.WriteProperty(writer, "enabled", enabled);
@@ -64,6 +56,8 @@ namespace BloodHoundConverter
                     IADNodeWriter.WriteProperty(writer, "dontreqpreauth", dontReqPreauth);
                     IADNodeWriter.WriteProperty(writer, "passwordnotreqd", passwordNotReqd);
                     IADNodeWriter.WriteProperty(writer, "trustedtoauth", trustedToAuth);
+                    IADNodeWriter.WriteProperty(writer, "pwdneverexpires", pwdNeverExpires);
+                    IADNodeWriter.WriteProperty(writer, "sensitive", sensitive);
                     break;
             }
         }

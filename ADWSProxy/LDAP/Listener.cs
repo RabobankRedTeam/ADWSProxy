@@ -10,17 +10,29 @@ namespace ADWSProxy.LDAP
     {
         private static readonly log4net.ILog logger = LogHelper.GetLogger(typeof(Listener));
 
-        public Listener(IPEndPoint endpoint, string domainController, int adwsPort, string instance, AdwsEndpoint mode, NetworkCredential? credential = null)
+        public Listener(IPEndPoint endpoint, string domainController, int adwsPort, string instance, AdwsEndpoint mode, NetworkCredential? credential = null, bool logPasswords = false)
         {
             logger.Info($"Constructing new {GetType().FullName}");
 
             TcpListener = new TcpListener(endpoint);
 
+            DomainController = domainController;
+            AdwsPort = adwsPort;
+            Mode = mode;
+            Credential = credential;
             ADWSConnection = new Connection(domainController, adwsPort, instance, mode, credential);
             Instance = instance;
+            LogPasswords = logPasswords;
         }
 
         public string Instance { get; }
+        private bool LogPasswords { get; }
+        private string DomainController { get; }
+        private int AdwsPort { get; }
+        private AdwsEndpoint Mode { get; }
+        private NetworkCredential? Credential { get; }
+        // Connection used for the single-threaded startup RootDSE probe; each accepted client
+        // gets its own Connection (see HandleClient) so concurrent clients never share WCF channels.
         internal Connection ADWSConnection { get; }
         private TcpListener TcpListener { get; }
 
@@ -42,7 +54,7 @@ namespace ADWSProxy.LDAP
         /// Handle bindrequests
         /// </summary>
         /// <param name="bindrequest"></param>
-        private static bool HandleBindRequest(Stream stream, LdapPacket requestPacket)
+        private bool HandleBindRequest(Stream stream, LdapPacket requestPacket)
         {
             logger.Info($"Handling bind request");
 
@@ -57,7 +69,7 @@ namespace ADWSProxy.LDAP
                     logger.Debug("Simple authentication");
                     var username = bindrequest?.ChildAttributes[1].GetValue<string>();
                     var password = passwordAttribute.GetValue<string>();
-                    logger.Debug($"Credentials: {username}:{password}");
+                    logger.Debug(LogPasswords ? $"Credentials: {username}:{password}" : $"Username: {username} (password logging disabled; use --logpasswords to enable)");
                     ldapResultPacket = new LdapResultAttribute(LdapOperation.BindResponse, LdapResult.success);
                     break;
 
@@ -92,52 +104,58 @@ namespace ADWSProxy.LDAP
 
         private void HandleClient(TcpClient client)
         {
-            // By default all LDAP packets will be processed as if the client is authenticated
-            var isBound = true;
-            var stream = client.GetStream();
-
-            while (LdapPacket.TryParsePacket(stream, out LdapPacket requestPacket))
+            // This client is owned here, so dispose it when handling finishes. Each client gets its
+            // own ADWS Connection so concurrent clients never share WCF channels.
+            using (client)
             {
-                try
+                // By default all LDAP packets will be processed as if the client is authenticated
+                var isBound = true;
+                using var stream = client.GetStream();
+                var connection = new Connection(DomainController, AdwsPort, Instance, Mode, Credential);
+
+                while (LdapPacket.TryParsePacket(stream, out LdapPacket requestPacket))
                 {
-                    logger.Info($"New LDAP packet received for instance {Instance}. Time to get to work!");
-                    LogPacket(requestPacket);
-
-                    if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.BindRequest))
+                    try
                     {
-                        isBound = HandleBindRequest(stream, requestPacket);
-                    }
+                        logger.Info($"New LDAP packet received for instance {Instance}. Time to get to work!");
+                        LogPacket(requestPacket);
 
-                    if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.UnbindRequest))
-                    {
-                        isBound = false;
-                        break;
-                    }
-
-                    if (isBound)
-                    {
-                        logger.Debug("Client is bound. We can continue");
-
-                        if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.SearchRequest))
+                        if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.BindRequest))
                         {
-                            HandleSearchRequest(stream, requestPacket);
+                            isBound = HandleBindRequest(stream, requestPacket);
                         }
+
+                        if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.UnbindRequest))
+                        {
+                            isBound = false;
+                            break;
+                        }
+
+                        if (isBound)
+                        {
+                            logger.Debug("Client is bound. We can continue");
+
+                            if (requestPacket.ChildAttributes.Any(o => o.LdapOperation == LdapOperation.SearchRequest))
+                            {
+                                HandleSearchRequest(stream, requestPacket, connection);
+                            }
+                        }
+                        logger.Info("Packet handling done!");
                     }
-                    logger.Info("Packet handling done!");
+                    catch (ArgumentException ex)
+                    {
+                        logger.Error("ArgumentException. Continuing", ex);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Error(ex.Message, ex);
+                    }
                 }
-                catch (ArgumentException ex)
-                {
-                    logger.Error("ArgumentException. Continuing", ex);
-                }
-                catch (Exception ex)
-                {
-                    logger.Error(ex.Message, ex);
-                }
+                logger.Info("Client handling done! Can we go to sleep now? Please?");
             }
-            logger.Info("Client handling done! Can we go to sleep now? Please?");
         }
 
-        private void HandleSearchRequest(NetworkStream stream, LdapPacket requestPacket)
+        private void HandleSearchRequest(NetworkStream stream, LdapPacket requestPacket, Connection connection)
         {
             logger.Debug("Handling Search request");
 
@@ -165,7 +183,7 @@ namespace ADWSProxy.LDAP
             logger.Info($"Request scopeIdentifier = {scopeValue}, Scope: {scope}");
 
             var blockedProperties = new List<string>();
-            // Bloodhound.py requested the a number of non existing properties during testing.
+            // Bloodhound.py requested a number of non-existent properties during testing.
             // These are removed from the request as this would cause an exception when sent to the ADWS endpoint.
             // Root cause of this issue has not been investigated as manually blocking these properties works for now.
             if (dn!.StartsWith("cn=aggregate,cn=schema,cn=configuration,dc=", StringComparison.OrdinalIgnoreCase)
@@ -180,7 +198,7 @@ namespace ADWSProxy.LDAP
             }
             logger.Debug($"Filtered request properties = {string.Join(",", properties)}");
 
-            ADWSConnection.Enumerate(dn!, filter, properties, scope, result =>
+            connection.Enumerate(dn!, filter, properties, scope, result =>
             {
                 logger.Info($"Result DN = {result.Item1}");
 
@@ -206,7 +224,7 @@ namespace ADWSProxy.LDAP
         {
             var sb = new StringBuilder();
             RecurseAttributes(sb, attribute);
-            logger.Debug($"Recieved LDAP Packet dump\n{sb}");
+            logger.Debug($"Received LDAP Packet dump\n{sb}");
         }
 
         private static string ParseFilter(LdapAttribute filterAttribute, StringBuilder? sb = null)
@@ -262,7 +280,7 @@ namespace ADWSProxy.LDAP
                         catch (Exception ex)
                         {
                             var base64 = Convert.ToBase64String(bytesValue);
-                            logger.Debug($"Coudn't parse value to SecurityIdentifier class, will used UTF-8 to get String. Base64 value was {base64}", ex);
+                            logger.Debug($"Couldn't parse value to SecurityIdentifier class, will use UTF-8 to get String. Base64 value was {base64}", ex);
                             sid = Encoding.UTF8.GetString(bytesValue);
                         }
                         sb.Append($"{filterAttribute.ChildAttributes[0].GetValue<string>()}={sid}");

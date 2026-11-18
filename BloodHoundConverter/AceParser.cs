@@ -14,7 +14,6 @@ namespace BloodHoundConverter
 
         private static readonly ILog log = LogManager.GetLogger(typeof(AceParser));
 
-        public static readonly HashSet<string> UnknownRights = new(StringComparer.OrdinalIgnoreCase);
         internal static bool IsAccessAllowedAce(AceType aceType)
         {
             if (!OperatingSystem.IsWindows())
@@ -36,9 +35,9 @@ namespace BloodHoundConverter
 
         private const string OwnerRightsSid = "S-1-3-4";
 
-        public static void WriteAcesFromDescriptor(JsonTextWriter writer, NodeProcessingContext context)
+        public static void WriteAcesFromDescriptor(JsonTextWriter writer, NodeProcessingContext context, ObjectType targetType)
         {
-            WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes);
+            WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes, targetType, context.DomainName);
         }
 
         private static void WriteAceObject(JsonTextWriter writer, string? sid, ObjectType type, string? rightName, bool isInherited, string? inheritanceHash, bool isPermissionForOwnerRightsSid, bool isInheritedPermissionForOwnerRightsSid)
@@ -60,7 +59,7 @@ namespace BloodHoundConverter
             try
             {
                 var bytes = SHA1.HashData(Encoding.UTF8.GetBytes(hash));
-                return BitConverter.ToString(bytes).Replace("-", string.Empty).ToUpper();
+                return BitConverter.ToString(bytes).Replace("-", string.Empty).ToUpperInvariant();
             }
             catch
             {
@@ -68,18 +67,13 @@ namespace BloodHoundConverter
             }
         }
 
-        internal class Ace
-        {
-            public string PrincipalSID { get; set; } = string.Empty;
-            public ObjectType PrincipalType { get; set; } = ObjectType.Base;
-            public string RightName { get; set; } = string.Empty;
-            public bool IsInherited { get; set; }
-            public string InheritanceHash { get; set; } = string.Empty;
-            public bool IsPermissionForOwnerRightsSid { get; set; }
-            public bool IsInheritedPermissionForOwnerRightsSid { get; set; }
-        }
-
-        internal static IEnumerable<Ace> ProcessACL(byte[]? securityDescriptorBytes, bool checkForOwnerRights = true)
+        /// <summary>
+        /// Computes the InheritanceHashes for a container (domain/OU/container): the hash of every
+        /// explicit, inheritable, non-deny ACE on the object's own security descriptor. BloodHound
+        /// matches these against the InheritanceHash stamped on each inherited child ACE to trace
+        /// where an inherited right originated. Windows-only (same constraint as ACL parsing).
+        /// </summary>
+        internal static IEnumerable<string> ComputeInheritanceHashes(byte[]? securityDescriptorBytes)
         {
             if (!OperatingSystem.IsWindows())
             {
@@ -94,18 +88,79 @@ namespace BloodHoundConverter
 
             var activeDirectorySecurity = new ActiveDirectorySecurity();
             activeDirectorySecurity.SetSecurityDescriptorBinaryForm(securityDescriptorBytes);
-            var ownerSid = activeDirectorySecurity.GetOwner(typeof(SecurityIdentifier))?.Value;
 
-            if (ownerSid != null)
+            foreach (ActiveDirectoryAccessRule ace in activeDirectorySecurity.GetAccessRules(true, true, typeof(SecurityIdentifier)))
             {
+                // Only explicit (not already-inherited), non-deny ACEs that actually propagate to
+                // children (InheritanceFlags set) seed a child's inherited ACE.
+                if (ace == null
+                    || ace.AccessControlType.HasFlag(AccessControlType.Deny)
+                    || ace.IsInherited
+                    || ace.InheritanceFlags == InheritanceFlags.None)
+                {
+                    continue;
+                }
+
+                var principalSid = ace.IdentityReference?.Value;
+                if (string.IsNullOrWhiteSpace(principalSid))
+                {
+                    continue;
+                }
+
+                var hash = CalculateInheritanceHash(principalSid, ace.ActiveDirectoryRights,
+                    ace.ObjectType.ToString().ToLowerInvariant(), ace.InheritedObjectType.ToString());
+                if (!string.IsNullOrEmpty(hash))
+                {
+                    yield return hash;
+                }
+            }
+        }
+
+        internal class Ace
+        {
+            public string PrincipalSID { get; set; } = string.Empty;
+            public ObjectType PrincipalType { get; set; } = ObjectType.Base;
+            public string RightName { get; set; } = string.Empty;
+            public bool IsInherited { get; set; }
+            public string InheritanceHash { get; set; } = string.Empty;
+            public bool IsPermissionForOwnerRightsSid { get; set; }
+            public bool IsInheritedPermissionForOwnerRightsSid { get; set; }
+        }
+
+        internal static IEnumerable<Ace> ProcessACL(byte[]? securityDescriptorBytes, ObjectType targetType, string? domainScope = null, bool checkForOwnerRights = true)
+        {
+            if (!OperatingSystem.IsWindows())
+            {
+                Helpers.NotifyWindowsOnlyFunctionality();
+                yield break;
+            }
+
+            if (securityDescriptorBytes == null || securityDescriptorBytes.Length == 0)
+            {
+                yield break;
+            }
+
+            var activeDirectorySecurity = new ActiveDirectorySecurity();
+            activeDirectorySecurity.SetSecurityDescriptorBinaryForm(securityDescriptorBytes);
+            string? forestScope = BloodHoundConverter.ForestRootOf(domainScope);
+            var rawOwnerSid = activeDirectorySecurity.GetOwner(typeof(SecurityIdentifier))?.Value;
+
+            if (rawOwnerSid != null)
+            {
+                string ownerSid = Helpers.ScopeSid(rawOwnerSid, domainScope, forestScope);
+                if (WellKnownSids.Table.ContainsKey(rawOwnerSid))
+                {
+                    BloodHoundConverter.RecordWellKnownReference(domainScope, rawOwnerSid);
+                }
                 yield return new Ace
                 {
                     PrincipalSID = ownerSid,
-                    PrincipalType = BloodHoundConverter.IdToTypeMap.TryGetValue(ownerSid, out var type) ? type : ObjectType.Base,
+                    PrincipalType = WellKnownSids.Table.TryGetValue(rawOwnerSid, out var ownerWk) ? ownerWk.Type
+                        : (BloodHoundConverter.IdToTypeMap.TryGetValue(ownerSid, out var type) ? type : ObjectType.Base),
                     RightName = EdgeNames.Owns,
                     IsInherited = false,
                     InheritanceHash = string.Empty,
-                    IsPermissionForOwnerRightsSid = ownerSid.Equals(OwnerRightsSid, StringComparison.OrdinalIgnoreCase),
+                    IsPermissionForOwnerRightsSid = rawOwnerSid.Equals(OwnerRightsSid, StringComparison.OrdinalIgnoreCase),
                     IsInheritedPermissionForOwnerRightsSid = false
                 };
             }
@@ -122,32 +177,42 @@ namespace BloodHoundConverter
                     continue;
                 }
 
-                var principalSid = ace.IdentityReference?.Value;
-                if (string.IsNullOrWhiteSpace(principalSid))
+                var rawPrincipalSid = ace.IdentityReference?.Value;
+                if (string.IsNullOrWhiteSpace(rawPrincipalSid))
                 {
                     continue;
                 }
 
-                ObjectType principalType = BloodHoundConverter.IdToTypeMap.TryGetValue(principalSid, out var type) ? type : ObjectType.Base;
+                // Domain-scope a well-known/built-in principal so the ACE edge targets the same
+                // {DOMAIN}-{SID} node used elsewhere, and record universal principals so their node is
+                // injected. The raw SID is kept for owner-rights and inheritance-hash matching.
+                string principalSid = Helpers.ScopeSid(rawPrincipalSid, domainScope, forestScope);
+                ObjectType principalType = WellKnownSids.Table.TryGetValue(rawPrincipalSid, out var wkPrincipal)
+                    ? wkPrincipal.Type
+                    : (BloodHoundConverter.IdToTypeMap.TryGetValue(principalSid, out var type) ? type : ObjectType.Base);
+                if (WellKnownSids.Table.ContainsKey(rawPrincipalSid))
+                {
+                    BloodHoundConverter.RecordWellKnownReference(domainScope, rawPrincipalSid);
+                }
 
                 bool isPermissionForOwnerRightsSid = false;
                 bool isInheritedPermissionForOwnerRightsSid = false;
 
-                if (checkForOwnerRights && principalSid.EndsWith("S-1-3-4"))
+                if (checkForOwnerRights && rawPrincipalSid.EndsWith("S-1-3-4", StringComparison.OrdinalIgnoreCase))
                 {
                     isPermissionForOwnerRightsSid = true;
                 }
 
                 var aceRights = ace.ActiveDirectoryRights;
-                var aceType = ace.ObjectType.ToString().ToLower();
+                var aceType = ace.ObjectType.ToString().ToLowerInvariant();
                 var inherited = ace.IsInherited;
 
                 var aceInheritanceHash = "";
                 if (inherited)
                 {
-                    aceInheritanceHash = CalculateInheritanceHash(principalSid, aceRights, aceType, ace.InheritedObjectType.ToString());
+                    aceInheritanceHash = CalculateInheritanceHash(rawPrincipalSid, aceRights, aceType, ace.InheritedObjectType.ToString());
 
-                    if (checkForOwnerRights && principalSid.EndsWith("S-1-3-4"))
+                    if (checkForOwnerRights && rawPrincipalSid.EndsWith("S-1-3-4", StringComparison.OrdinalIgnoreCase))
                     {
                         isInheritedPermissionForOwnerRightsSid = true;
                     }
@@ -201,7 +266,7 @@ namespace BloodHoundConverter
 
                 if (aceRights.HasFlag(ActiveDirectoryRights.Self) &&
                     !aceRights.HasFlag(ActiveDirectoryRights.WriteProperty) &&
-                    !aceRights.HasFlag(ActiveDirectoryRights.GenericWrite) && aceType == "group" &&
+                    !aceRights.HasFlag(ActiveDirectoryRights.GenericWrite) && targetType == ObjectType.Group &&
                     (aceType == AceGuids.WriteMember || aceType == AceGuids.MembershipPropertySet || aceType == AceGuids.AllGuid))
                 {
                     yield return new Ace
@@ -219,7 +284,7 @@ namespace BloodHoundConverter
                 if (aceRights.HasFlag(ActiveDirectoryRights.ExtendedRight) ||
                     aceRights.HasFlag(ActiveDirectoryRights.GenericAll))
                 {
-                    if (type == ObjectType.Domain)
+                    if (targetType == ObjectType.Domain)
                     {
                         if (aceType == AceGuids.DSReplicationGetChanges)
                         {
@@ -275,7 +340,7 @@ namespace BloodHoundConverter
 
                         }
                     }
-                    else if (type == ObjectType.User)
+                    else if (targetType == ObjectType.User)
                     {
                         if (aceType == AceGuids.UserForceChangePassword)
                         {
@@ -304,7 +369,7 @@ namespace BloodHoundConverter
                             };
                         }
                     }
-                    else if (type == ObjectType.Computer)
+                    else if (targetType == ObjectType.Computer)
                     {
                         if (aceType is AceGuids.AllGuid or "")
                         {
@@ -320,7 +385,7 @@ namespace BloodHoundConverter
                             };
                         }
                     }
-                    else if (type == ObjectType.CertTemplate)
+                    else if (targetType == ObjectType.CertTemplate)
                     {
                         if (aceType is AceGuids.AllGuid or "")
                         {
@@ -355,7 +420,7 @@ namespace BloodHoundConverter
                     aceRights.HasFlag(ActiveDirectoryRights.WriteProperty) ||
                     aceRights.HasFlag(ActiveDirectoryRights.GenericAll))
                 {
-                    if (type is ObjectType.User
+                    if (targetType is ObjectType.User
                         or ObjectType.Group
                         or ObjectType.Computer
                         or ObjectType.GPO
@@ -381,7 +446,7 @@ namespace BloodHoundConverter
                         };
                     }
 
-                    if (type == ObjectType.User && aceType == AceGuids.WriteSPN)
+                    if (targetType == ObjectType.User && aceType == AceGuids.WriteSPN)
                     {
                         yield return new Ace
                         {
@@ -394,7 +459,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type == ObjectType.Computer && aceType == AceGuids.WriteAllowedToAct)
+                    else if (targetType == ObjectType.Computer && aceType == AceGuids.WriteAllowedToAct)
                     {
                         yield return new Ace
                         {
@@ -407,7 +472,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type == ObjectType.Computer && aceType == AceGuids.UserAccountRestrictions)
+                    else if (targetType == ObjectType.Computer && aceType == AceGuids.UserAccountRestrictions)
                     {
                         yield return new Ace
                         {
@@ -420,7 +485,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type is ObjectType.OU or ObjectType.Domain && aceType == AceGuids.WriteGPLink)
+                    else if (targetType is ObjectType.OU or ObjectType.Domain && aceType == AceGuids.WriteGPLink)
                     {
                         yield return new Ace
                         {
@@ -433,7 +498,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type == ObjectType.Group && (aceType is AceGuids.WriteMember or AceGuids.MembershipPropertySet))
+                    else if (targetType == ObjectType.Group && (aceType is AceGuids.WriteMember or AceGuids.MembershipPropertySet))
                     {
                         yield return new Ace
                         {
@@ -446,7 +511,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type is ObjectType.User or ObjectType.Computer && aceType == AceGuids.AddKeyPrincipal)
+                    else if (targetType is ObjectType.User or ObjectType.Computer && aceType == AceGuids.AddKeyPrincipal)
                     {
                         yield return new Ace
                         {
@@ -459,7 +524,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type is ObjectType.User or ObjectType.Computer && aceType == AceGuids.WriteAltSecurityIdentities)
+                    else if (targetType is ObjectType.User or ObjectType.Computer && aceType == AceGuids.WriteAltSecurityIdentities)
                     {
                         yield return new Ace
                         {
@@ -472,7 +537,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type is ObjectType.User or ObjectType.Computer && aceType == AceGuids.WritePublicInformation)
+                    else if (targetType is ObjectType.User or ObjectType.Computer && aceType == AceGuids.WritePublicInformation)
                     {
                         yield return new Ace
                         {
@@ -485,7 +550,7 @@ namespace BloodHoundConverter
                             IsInheritedPermissionForOwnerRightsSid = isInheritedPermissionForOwnerRightsSid,
                         };
                     }
-                    else if (type is ObjectType.CertTemplate)
+                    else if (targetType is ObjectType.CertTemplate)
                     {
                         if (aceType == AceGuids.PKIEnrollmentFlag)
                         {
@@ -516,7 +581,7 @@ namespace BloodHoundConverter
                     }
                 }
 
-                if (type == ObjectType.EnterpriseCA)
+                if (targetType == ObjectType.EnterpriseCA)
                 {
                     if (aceType is AceGuids.Enroll)
                     {
@@ -580,7 +645,7 @@ namespace BloodHoundConverter
 
         }
 
-        internal static void WriteAcesFromDescriptor(JsonTextWriter writer, byte[]? securityDescriptorBytes)
+        internal static void WriteAcesFromDescriptor(JsonTextWriter writer, byte[]? securityDescriptorBytes, ObjectType targetType, string? domainScope = null)
         {
             writer.WritePropertyName("Aces");
             writer.WriteStartArray();
@@ -600,7 +665,7 @@ namespace BloodHoundConverter
 
             try
             {
-                foreach (var acl in ProcessACL(securityDescriptorBytes))
+                foreach (var acl in ProcessACL(securityDescriptorBytes, targetType, domainScope))
                 {
                     WriteAceObject(writer, acl.PrincipalSID, acl.PrincipalType, acl.RightName, acl.IsInherited, acl.InheritanceHash, acl.IsPermissionForOwnerRightsSid, acl.IsInheritedPermissionForOwnerRightsSid);
                 }

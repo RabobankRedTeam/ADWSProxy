@@ -13,11 +13,10 @@ namespace BloodHoundConverter.Writers
             WriteGPOChanges(writer, context);
             WriteProperties(writer, context);
 
-            //TODO: Implement this
-            WritePropertyArray(writer, "ChildObjects", []);
-            WritePropertyArray(writer, "Trusts", []);
-            WritePropertyArray(writer, "Links", []);
-            WritePropertyArray(writer, "InheritanceHashes", []);
+            WriteChildObjects(writer, context);
+            WriteTrusts(writer, context);
+            WriteLinks(writer, context);
+            WritePropertyArray(writer, "InheritanceHashes", AceParser.ComputeInheritanceHashes(context.SecurityDescriptorBytes));
             var domainParts = context.DomainName.Split('.', StringSplitOptions.RemoveEmptyEntries);
             string? resolvedForestSid = null;
             for (int i = 2; i <= domainParts.Length; i++)
@@ -32,9 +31,9 @@ namespace BloodHoundConverter.Writers
             }
             WriteProperty(writer, "ForestRootIdentifier", resolvedForestSid, context.DomainSid);
             WriteBaseNodeValues(writer, context, context.ObjectSid);
-            AceParser.WriteAcesFromDescriptor(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.Domain);
 
-            WriteContaineredBy(writer, context);
+            WriteContainedBy(writer, context);
             writer.WriteEndObject();
         }
 
@@ -58,7 +57,7 @@ namespace BloodHoundConverter.Writers
             WriteProperty(writer, "functionallevel", Helpers.ParseBehaviorVersion(context.GetFirstAttributeValue("msds-behavior-version")));
             WriteProperty(writer, "netbios",
                 context.GetFirstAttributeValue("name")?.ToUpperInvariant(),
-                (context.GetFirstAttributeValue("dc") ?? context.DomainName.Split('.').FirstOrDefault())?.ToUpper());
+                (context.GetFirstAttributeValue("dc") ?? context.DomainName.Split('.').FirstOrDefault())?.ToUpperInvariant());
             WritePropertyBool(writer, "collected", null, true);
 
             writer.WriteEndObject();

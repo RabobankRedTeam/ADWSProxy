@@ -12,11 +12,11 @@ namespace BloodHoundConverter.Writers
             writer.WriteStartObject();
             WriteProperties(writer, context);
 
-            AceParser.WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes);
+            AceParser.WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes, ObjectType.AIACA, context.DomainName);
 
             WriteBaseNodeValues(writer, context, context.ObjectGUID);
 
-            WriteContaineredBy(writer, context);
+            WriteContainedBy(writer, context);
             writer.WriteEndObject();
         }
 

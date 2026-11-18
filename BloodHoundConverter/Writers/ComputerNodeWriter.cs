@@ -7,6 +7,40 @@ namespace BloodHoundConverter.Writers
     {
         internal override ILog Log => LogManager.GetLogger(typeof(ComputerNodeWriter));
 
+        // msDS-SupportedEncryptionTypes bit -> Kerberos etype name, matching SharpHound's output.
+        private static readonly (int Bit, string Name)[] EncryptionTypeNames =
+        [
+            (0x1, "DES-CBC-CRC"),
+            (0x2, "DES-CBC-MD5"),
+            (0x4, "RC4-HMAC-MD5"),
+            (0x8, "AES128-CTS-HMAC-SHA1-96"),
+            (0x10, "AES256-CTS-HMAC-SHA1-96"),
+        ];
+
+        // Decodes the msDS-SupportedEncryptionTypes integer bitmask into the named etype array
+        // BloodHound expects. Returns null when the attribute is absent/unparsable (property omitted),
+        // and ["Not defined"] for a value of 0, mirroring SharpHound.
+        private static List<string>? DecodeSupportedEncryptionTypes(string? raw)
+        {
+            if (!int.TryParse(raw, out int flags))
+            {
+                return null;
+            }
+            if (flags == 0)
+            {
+                return ["Not defined"];
+            }
+            var result = new List<string>();
+            foreach (var (bit, name) in EncryptionTypeNames)
+            {
+                if ((flags & bit) != 0)
+                {
+                    result.Add(name);
+                }
+            }
+            return result;
+        }
+
         internal override void WriteProperties(JsonTextWriter writer, NodeProcessingContext context)
         {
             writer.WritePropertyName("Properties");
@@ -32,7 +66,7 @@ namespace BloodHoundConverter.Writers
                 WriteProperty(writer, "passwordexpired", context.UacProps.PasswordExpired);
             }
 
-            WritePropertyArray(writer, "supportedencryptiontypes", context.GetFirstAttributeValue("msDS-SupportedEncryptionTypes")?.Split(','));
+            WritePropertyArray(writer, "supportedencryptiontypes", DecodeSupportedEncryptionTypes(context.GetFirstAttributeValue("msDS-SupportedEncryptionTypes")));
 
             WritePropertyArray(writer, "serviceprincipalnames", context.GetAttributeValues("servicePrincipalName"));
 
@@ -67,10 +101,10 @@ namespace BloodHoundConverter.Writers
             WriteBaseNodeValues(writer, context, context.ObjectSid);
 
             string primaryGroupRid = context.GetFirstAttributeValue("primaryGroupID") ?? "515";
-            string primaryGroupSid = context.CalculateGroupSid(primaryGroupRid);
+            string primaryGroupSid = Helpers.CalculateGroupSid(context.ObjectSid, primaryGroupRid);
 
             WriteProperty(writer, "PrimaryGroupSID", primaryGroupSid);
-            WritePropertyArray(writer, "AllowedToDelegate", null, []);
+            WriteAllowedToDelegate(writer, context);
             var rawAllowedToAct = context.GetAttributeValues("msds-allowedtoactonbehalfofotheridentity");
             List<string> allowedToAct = [];
             if (rawAllowedToAct?.Count > 0)
@@ -108,7 +142,7 @@ namespace BloodHoundConverter.Writers
             }
             WritePropertyArray(writer, "AllowedToAct", allowedToAct);
 
-            WritePropertyArray(writer, "HasSIDHistory", context.GetAttributeValues("sIDHistory"), []);
+            WriteSidHistoryPrincipals(writer, context);
 
             writer.WritePropertyName("Sessions");
             writer.WriteStartObject();
@@ -143,7 +177,8 @@ namespace BloodHoundConverter.Writers
             WriteProperty(writer, "UnconstrainedDelegation", context.UacProps?.TrustedForDelegation, false);
             WriteProperty(writer, "DomainSID", context.DomainSid);
 
-            AceParser.WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes);
+            AceParser.WriteAcesFromDescriptor(writer, context.SecurityDescriptorBytes, ObjectType.Computer, context.DomainName);
+            WriteContainedBy(writer, context);
             writer.WriteEndObject();
         }
     }

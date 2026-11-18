@@ -27,14 +27,18 @@ namespace BloodHoundConverter.Writers
         {
             writer.WriteStartObject();
             WriteProperties(writer, context);
-            WriteBaseNodeValues(writer, context, context.ObjectGUID);
+            // Prefer the (domain-scoped) SID when the object has one so the emitted ObjectIdentifier
+            // matches what the first pass registered and what ContainedBy/ChildObjects reference. Only
+            // CN=Builtin and cross-domain foreign principals carry a SID here; every other container has
+            // none and keeps its objectGUID.
+            WriteBaseNodeValues(writer, context, string.IsNullOrEmpty(context.ObjectSid) ? context.ObjectGUID : context.ObjectSid);
 
-            WritePropertyArray(writer, "ChildObjects", []);
-            WritePropertyArray(writer, "InheritanceHashes", []);
+            WriteChildObjects(writer, context);
+            WritePropertyArray(writer, "InheritanceHashes", AceParser.ComputeInheritanceHashes(context.SecurityDescriptorBytes));
 
-            AceParser.WriteAcesFromDescriptor(writer, context);
+            AceParser.WriteAcesFromDescriptor(writer, context, ObjectType.Container);
 
-            WriteContaineredBy(writer, context);
+            WriteContainedBy(writer, context);
 
             writer.WriteEndObject();
         }

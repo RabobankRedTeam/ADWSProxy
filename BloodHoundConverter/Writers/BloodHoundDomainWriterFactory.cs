@@ -34,50 +34,10 @@ namespace BloodHoundConverter.Writers
                 string fullPath = Path.Combine(outputDirectoryPath, baseFileName);
 
                 writer = new BloodHoundWriter(fullPath, formatting, fileType);
-
-                if (fileType == BloodHoundFileType.Groups)
-                {
-                    InjectWellKnwonGroups(writer.JsonWriter!);
-                }
                 domainWriters[fileType] = writer;
             }
 
             return writer;
-        }
-
-        private static void InjectWellKnwonGroups(JsonTextWriter writer)
-        {
-            foreach (var kvp in BloodHoundModels.WellKnownSystemGroups)
-            {
-                string sid = kvp.Key;
-                var (shortName, description) = kvp.Value;
-
-                string assignedDomain = "NT AUTHORITY";
-
-                if (sid.StartsWith("S-1-5-32", StringComparison.OrdinalIgnoreCase))
-                {
-                    assignedDomain = "BUILTIN";
-                }
-                else if (sid.Equals("S-1-1-0", StringComparison.OrdinalIgnoreCase))
-                {
-                    assignedDomain = "EVERYONE";
-                }
-
-                writer.WriteStartObject();
-                IADNodeWriter.WriteProperty(writer, "ObjectIdentifier", sid);
-                writer.WritePropertyName("Properties");
-                writer.WriteStartObject();
-                IADNodeWriter.WriteProperty(writer, "domain", assignedDomain);
-                IADNodeWriter.WriteProperty(writer, "name", $"{shortName}@{assignedDomain}".ToUpper());
-                IADNodeWriter.WriteProperty(writer, "distinguishedname", $"CN={shortName},CN=WellKnownSids,DC=System".ToUpper());
-                IADNodeWriter.WriteProperty(writer, "description", description);
-                writer.WriteEndObject();
-
-                // System SIDs have empty structural links/ACE arrays by default in exports
-                IADNodeWriter.WritePropertyArray(writer, "Members", []);
-                IADNodeWriter.WritePropertyArray(writer, "Aces", []);
-                writer.WriteEndObject();
-            }
         }
 
         public void Dispose()
